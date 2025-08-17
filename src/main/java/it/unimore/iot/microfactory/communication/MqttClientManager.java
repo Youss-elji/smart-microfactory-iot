@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
 import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttClientPersistence;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
@@ -17,27 +16,18 @@ public class MqttClientManager {
 
     private static final Logger logger = LoggerFactory.getLogger(MqttClientManager.class);
 
-    private static final String BROKER_URL = "tcp://localhost:1883";
-    private static final String CLIENT_ID_PREFIX = "iot-device-";
 
     private final IMqttClient mqttClient;
     private final ObjectMapper objectMapper;
 
-    public MqttClientManager(String deviceId) throws MqttException {
-        String clientId = CLIENT_ID_PREFIX + deviceId;
-        MqttClientPersistence persistence = new MemoryPersistence();
-        this.mqttClient = new MqttClient(BROKER_URL, clientId, persistence);
         this.objectMapper = new ObjectMapper();
     }
 
     public void connect() throws MqttException {
-        if (!this.mqttClient.isConnected()) {
             MqttConnectOptions options = new MqttConnectOptions();
             options.setAutomaticReconnect(true);
             options.setCleanSession(true);
             options.setConnectionTimeout(10);
-            this.mqttClient.connect(options);
-            logger.info("MQTT Client connected to broker: {}", BROKER_URL);
         }
     }
 

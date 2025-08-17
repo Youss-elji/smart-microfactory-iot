@@ -12,10 +12,8 @@ public abstract class SimulatedDevice implements Runnable {
     protected final String deviceId;
     protected final MqttClientManager mqttClientManager;
 
-    protected SimulatedDevice(String deviceId) {
         this.deviceId = deviceId;
         try {
-            this.mqttClientManager = new MqttClientManager(deviceId);
         } catch (MqttException e) {
             logger.error("Failed to create MQTT client for device {}", deviceId, e);
             throw new RuntimeException("MQTT client creation failed", e);

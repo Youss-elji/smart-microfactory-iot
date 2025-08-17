@@ -22,7 +22,6 @@ public class DataCollectorManager {
 
     private static final String BROKER_URL = "tcp://localhost:1883";
     private static final String CLIENT_ID = "data-collector-manager";
-    private static final String TELEMETRY_TOPIC_WILDCARD = "microfactory/+/+/status";
 
     private final IMqttClient mqttClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -73,13 +72,10 @@ public class DataCollectorManager {
     private void processMessage(String topic, MqttMessage message) throws java.io.IOException {
         logger.debug("Message arrived from topic '{}': {}", topic, new String(message.getPayload()));
         String[] topicParts = topic.split("/");
-        if (topicParts.length < 4) {
             logger.warn("Received message on unexpected topic: {}", topic);
             return;
         }
 
-        String deviceType = topicParts[1];
-        String deviceId = topicParts[2];
 
         Object data = null;
 
@@ -87,15 +83,11 @@ public class DataCollectorManager {
             case "robot":
                 data = objectMapper.readValue(message.getPayload(), RobotCellStatus.class);
                 if (((RobotCellStatus) data).getStatus() == RobotCellStatusEnum.ALARM) {
-                    logger.warn("ALARM DETECTED for Robot {}. Corrective action would be taken here.", deviceId);
-                    // In a real scenario, we would send a command back.
-                    // This will be implemented in a future step.
                 }
                 break;
             case "conveyor":
                 data = objectMapper.readValue(message.getPayload(), ConveyorBeltStatus.class);
                 break;
-            case "sensor":
                 data = objectMapper.readValue(message.getPayload(), QualitySensorData.class);
                 break;
             default:
@@ -115,11 +107,7 @@ public class DataCollectorManager {
             return;
         }
 
-        digitalTwinState.forEach((deviceId, data) -> {
-            logger.info("Device ID: {} -> Status: {}", deviceId, data.toString());
-        });
 
-        // Example of a specific statistic calculation
         digitalTwinState.values().stream()
                 .filter(d -> d instanceof QualitySensorData)
                 .map(d -> (QualitySensorData) d)
@@ -128,7 +116,6 @@ public class DataCollectorManager {
                     int total = sensorData.getTotalProcessed();
                     int bad = sensorData.getBadCount();
                     double defectRate = total > 0 ? (double) bad / total * 100 : 0;
-                    logger.info("PRODUCTION STATS --- Total: {}, Bad: {}, Defect Rate: {:.2f}%", total, bad, defectRate);
                 });
         logger.info("------------------------------------------------------");
     }
