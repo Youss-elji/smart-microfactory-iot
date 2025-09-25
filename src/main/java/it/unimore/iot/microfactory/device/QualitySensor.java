@@ -9,7 +9,6 @@ import java.util.Random;
 public class QualitySensor extends SimulatedDevice {
 
     private static final Logger logger = LoggerFactory.getLogger(QualitySensor.class);
-    private static final String TELEMETRY_TOPIC = "microfactory/sensor/%s/status";
 
     private static final int SCAN_INTERVAL_MS = 1500;
     private static final double GOOD_QUALITY_PROBABILITY = 0.95;
@@ -19,18 +18,23 @@ public class QualitySensor extends SimulatedDevice {
     private int goodCount = 0;
     private int badCount = 0;
 
-    public QualitySensor(String deviceId) {
-        super(deviceId);
+    private final String statusTopic;
+
+    public QualitySensor(String cellId, String deviceType, String deviceId) {
+        super(cellId, deviceType, deviceId);
+        this.statusTopic = String.format("mf/%s/%s/%s/status", cellId, deviceType, deviceId);
     }
 
     @Override
     public void start() throws InterruptedException {
         logger.info("QualitySensor {} started.", deviceId);
 
-        while (!Thread.currentThread().isInterrupted()) {
+        while (running) {
             Thread.sleep(SCAN_INTERVAL_MS + random.nextInt(500));
-            scanNewItem();
-            publishStatus();
+            if (running) {
+                scanNewItem();
+                publishStatus();
+            }
         }
     }
 
@@ -53,7 +57,6 @@ public class QualitySensor extends SimulatedDevice {
                 this.goodCount,
                 this.badCount
         );
-        String topic = String.format(TELEMETRY_TOPIC, this.deviceId);
-        mqttClientManager.publish(topic, data);
+        mqttClientManager.publish(statusTopic, data);
     }
 }

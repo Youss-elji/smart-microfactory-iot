@@ -1,16 +1,16 @@
 package it.unimore.iot.microfactory.manager;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimore.iot.microfactory.model.ConveyorBeltStatus;
-import it.unimore.iot.microfactory.model.QualitySensorData;
-import it.unimore.iot.microfactory.model.RobotCellStatus;
-import it.unimore.iot.microfactory.model.RobotCellStatusEnum;
+import it.unimore.iot.microfactory.model.*;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -20,17 +20,18 @@ public class DataCollectorManager {
 
     private static final Logger logger = LoggerFactory.getLogger(DataCollectorManager.class);
 
-    private static final String BROKER_URL = "tcp://localhost:1883";
-    private static final String CLIENT_ID = "data-collector-manager";
-    private static final String TELEMETRY_TOPIC_WILDCARD = "microfactory/+/+/status";
+    private static final String CLIENT_ID = "data-collector-manager-" + UUID.randomUUID();
+    private static final String TELEMETRY_TOPIC_WILDCARD = "mf/+/+/+/status";
 
+    private final String brokerUrl;
     private final IMqttClient mqttClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, Object> digitalTwinState = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     public DataCollectorManager() throws MqttException {
-        this.mqttClient = new MqttClient(BROKER_URL, CLIENT_ID, new MemoryPersistence());
+        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL")).orElse("tcp://localhost:1883");
+        this.mqttClient = new MqttClient(brokerUrl, CLIENT_ID, new MemoryPersistence());
     }
 
     public void start() throws MqttException {
@@ -38,11 +39,26 @@ public class DataCollectorManager {
         options.setAutomaticReconnect(true);
         options.setCleanSession(true);
         options.setConnectionTimeout(10);
+
+        Optional.ofNullable(System.getenv("MQTT_USERNAME")).ifPresent(options::setUserName);
+        Optional.ofNullable(System.getenv("MQTT_PASSWORD"))
+                .map(String::toCharArray)
+                .ifPresent(options::setPassword);
+
         this.mqttClient.connect(options);
+        logger.info("Data Collector Manager connected to broker: {}", brokerUrl);
 
-        logger.info("Data Collector Manager connected to broker: {}", BROKER_URL);
+        this.mqttClient.setCallback(new MqttCallbackExtended() {
+            @Override
+            public void connectComplete(boolean reconnect, String serverURI) {
+                logger.info("Connection complete to {}. Reconnect: {}", serverURI, reconnect);
+                try {
+                    subscribeToTopics();
+                } catch (MqttException e) {
+                    logger.error("Error subscribing to topics after (re)connection", e);
+                }
+            }
 
-        this.mqttClient.setCallback(new MqttCallback() {
             @Override
             public void connectionLost(Throwable cause) {
                 logger.error("Connection lost", cause);
@@ -59,43 +75,47 @@ public class DataCollectorManager {
 
             @Override
             public void deliveryComplete(IMqttDeliveryToken token) {
-                // Not used in this subscriber-only client
+                // Not used for publishing from this callback
             }
         });
 
+        subscribeToTopics();
+        scheduler.scheduleAtFixedRate(this::printStatistics, 10, 10, TimeUnit.SECONDS);
+    }
+
+    private void subscribeToTopics() throws MqttException {
         this.mqttClient.subscribe(TELEMETRY_TOPIC_WILDCARD, 1);
         logger.info("Subscribed to topic: {}", TELEMETRY_TOPIC_WILDCARD);
-
-        // Start printing stats periodically
-        scheduler.scheduleAtFixedRate(this::printStatistics, 5, 5, TimeUnit.SECONDS);
     }
 
     private void processMessage(String topic, MqttMessage message) throws java.io.IOException {
         logger.debug("Message arrived from topic '{}': {}", topic, new String(message.getPayload()));
         String[] topicParts = topic.split("/");
-        if (topicParts.length < 4) {
-            logger.warn("Received message on unexpected topic: {}", topic);
+        if (topicParts.length != 5 || !topicParts[0].equals("mf") || !topicParts[4].equals("status")) {
+            logger.warn("Received message on unexpected topic format: {}", topic);
             return;
         }
 
-        String deviceType = topicParts[1];
-        String deviceId = topicParts[2];
+        String cellId = topicParts[1];
+        String deviceType = topicParts[2];
+        String deviceId = topicParts[3];
+        String digitalTwinKey = String.format("%s-%s", deviceType, deviceId);
 
         Object data = null;
 
         switch (deviceType) {
             case "robot":
-                data = objectMapper.readValue(message.getPayload(), RobotCellStatus.class);
-                if (((RobotCellStatus) data).getStatus() == RobotCellStatusEnum.ALARM) {
-                    logger.warn("ALARM DETECTED for Robot {}. Corrective action would be taken here.", deviceId);
-                    // In a real scenario, we would send a command back.
-                    // This will be implemented in a future step.
+                RobotCellStatus status = objectMapper.readValue(message.getPayload(), RobotCellStatus.class);
+                data = status;
+                if (status.getStatus() == RobotCellStatusEnum.ALARM) {
+                    logger.warn("ALARM DETECTED for Robot {} in cell {}. Sending RESET command.", deviceId, cellId);
+                    sendResetCommand(cellId, deviceId);
                 }
                 break;
             case "conveyor":
                 data = objectMapper.readValue(message.getPayload(), ConveyorBeltStatus.class);
                 break;
-            case "sensor":
+            case "quality":
                 data = objectMapper.readValue(message.getPayload(), QualitySensorData.class);
                 break;
             default:
@@ -104,7 +124,21 @@ public class DataCollectorManager {
         }
 
         if (data != null) {
-            digitalTwinState.put(deviceId, data);
+            digitalTwinState.put(digitalTwinKey, data);
+        }
+    }
+
+    private void sendResetCommand(String cellId, String deviceId) {
+        try {
+            String cmdTopic = String.format("mf/%s/robot/%s/cmd", cellId, deviceId);
+            Command cmd = new Command("RESET", System.currentTimeMillis());
+            byte[] payload = objectMapper.writeValueAsBytes(cmd);
+            mqttClient.publish(cmdTopic, payload, 1, false);
+            logger.info("Published RESET command to {}", cmdTopic);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing RESET command", e);
+        } catch (MqttException e) {
+            logger.error("Error publishing RESET command", e);
         }
     }
 
@@ -115,11 +149,8 @@ public class DataCollectorManager {
             return;
         }
 
-        digitalTwinState.forEach((deviceId, data) -> {
-            logger.info("Device ID: {} -> Status: {}", deviceId, data.toString());
-        });
+        digitalTwinState.forEach((key, data) -> logger.info("Device [{}]: {}", key, data.toString()));
 
-        // Example of a specific statistic calculation
         digitalTwinState.values().stream()
                 .filter(d -> d instanceof QualitySensorData)
                 .map(d -> (QualitySensorData) d)
@@ -128,13 +159,13 @@ public class DataCollectorManager {
                     int total = sensorData.getTotalProcessed();
                     int bad = sensorData.getBadCount();
                     double defectRate = total > 0 ? (double) bad / total * 100 : 0;
-                    logger.info("PRODUCTION STATS --- Total: {}, Bad: {}, Defect Rate: {:.2f}%", total, bad, defectRate);
+                    logger.info("--- PRODUCTION STATS --- Total: {}, Bad: {}, Defect Rate: {:.2f}%", total, bad, defectRate);
                 });
         logger.info("------------------------------------------------------");
     }
 
     public void stop() throws MqttException {
-        scheduler.shutdown();
+        scheduler.shutdownNow();
         if (mqttClient.isConnected()) {
             mqttClient.disconnect();
         }
