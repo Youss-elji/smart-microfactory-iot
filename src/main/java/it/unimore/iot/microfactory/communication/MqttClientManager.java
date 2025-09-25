@@ -4,29 +4,40 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
 import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttClientPersistence;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
-import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 public class MqttClientManager {
 
     private static final Logger logger = LoggerFactory.getLogger(MqttClientManager.class);
 
-    private static final String BROKER_URL = "tcp://localhost:1883";
     private static final String CLIENT_ID_PREFIX = "iot-device-";
+
+    private final String brokerUrl;
+    private final String cellId;
+    private final String deviceType;
+    private final String deviceId;
 
     private final IMqttClient mqttClient;
     private final ObjectMapper objectMapper;
 
-    public MqttClientManager(String deviceId) throws MqttException {
-        String clientId = CLIENT_ID_PREFIX + deviceId;
+    public MqttClientManager(String cellId, String deviceType, String deviceId) throws MqttException {
+        this.cellId = cellId;
+        this.deviceType = deviceType;
+        this.deviceId = deviceId;
+
+        // Read broker URL from environment variable or use default
+        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL")).orElse("tcp://localhost:1883");
+
+        String clientId = String.format("%s-%s-%s-%s", CLIENT_ID_PREFIX, cellId, deviceType, UUID.randomUUID());
         MqttClientPersistence persistence = new MemoryPersistence();
-        this.mqttClient = new MqttClient(BROKER_URL, clientId, persistence);
+        this.mqttClient = new MqttClient(brokerUrl, clientId, persistence);
         this.objectMapper = new ObjectMapper();
     }
 
@@ -36,9 +47,37 @@ public class MqttClientManager {
             options.setAutomaticReconnect(true);
             options.setCleanSession(true);
             options.setConnectionTimeout(10);
+
+            // Read username and password from environment variables if they exist
+            Optional.ofNullable(System.getenv("MQTT_USERNAME")).ifPresent(options::setUserName);
+            Optional.ofNullable(System.getenv("MQTT_PASSWORD"))
+                    .map(String::toCharArray)
+                    .ifPresent(options::setPassword);
+
+            // Configure LWT (Last Will and Testament)
+            String lwtTopic = String.format("mf/%s/%s/%s/lwt", cellId, deviceType, deviceId);
+            options.setWill(lwtTopic, "offline".getBytes(), 1, true);
+
             this.mqttClient.connect(options);
-            logger.info("MQTT Client connected to broker: {}", BROKER_URL);
+            logger.info("MQTT Client connected to broker: {}", brokerUrl);
+
+            // Publish retained info message
+            publishInfoMessage();
         }
+    }
+
+    private void publishInfoMessage() {
+        Map<String, Object> info = Map.of(
+                "cellId", cellId,
+                "type", deviceType,
+                "deviceId", deviceId,
+                "fw", "0.1.0",
+                "online", true,
+                "ts", System.currentTimeMillis()
+        );
+        String infoTopic = String.format("mf/%s/%s/%s/info", cellId, deviceType, deviceId);
+        publishRetained(infoTopic, info);
+        logger.info("Published retained info message to topic: {}", infoTopic);
     }
 
     public void disconnect() throws MqttException {
@@ -64,6 +103,22 @@ public class MqttClientManager {
         }
     }
 
+    public <T> void publishRetained(String topic, T payload) {
+        try {
+            if (this.mqttClient.isConnected()) {
+                Optional<byte[]> serializedPayload = serializePayload(payload);
+                if (serializedPayload.isPresent()) {
+                    this.mqttClient.publish(topic, serializedPayload.get(), 1, true);
+                    logger.debug("Published retained to topic '{}' with payload: {}", topic, payload);
+                }
+            } else {
+                logger.warn("MQTT client not connected. Cannot publish message to topic '{}'", topic);
+            }
+        } catch (MqttException e) {
+            logger.error("Error publishing retained to topic '{}'", topic, e);
+        }
+    }
+
     private <T> Optional<byte[]> serializePayload(T payload) {
         try {
             return Optional.of(objectMapper.writeValueAsBytes(payload));
@@ -71,5 +126,9 @@ public class MqttClientManager {
             logger.error("Error serializing payload", e);
             return Optional.empty();
         }
+    }
+
+    public IMqttClient getClient() {
+        return this.mqttClient;
     }
 }
