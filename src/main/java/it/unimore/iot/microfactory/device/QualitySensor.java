@@ -18,15 +18,23 @@ public class QualitySensor extends SimulatedDevice {
     private int goodCount = 0;
     private int badCount = 0;
 
+    private final String statusTopic;
+
+    public QualitySensor(String cellId, String deviceType, String deviceId) {
+        super(cellId, deviceType, deviceId);
+        this.statusTopic = String.format("mf/%s/%s/%s/status", cellId, deviceType, deviceId);
     }
 
     @Override
     public void start() throws InterruptedException {
         logger.info("QualitySensor {} started.", deviceId);
 
+        while (running) {
             Thread.sleep(SCAN_INTERVAL_MS + random.nextInt(500));
-            scanNewItem();
-            publishStatus();
+            if (running) {
+                scanNewItem();
+                publishStatus();
+            }
         }
     }
 
@@ -49,6 +57,6 @@ public class QualitySensor extends SimulatedDevice {
                 this.goodCount,
                 this.badCount
         );
-        mqttClientManager.publish(topic, data);
+        mqttClientManager.publish(statusTopic, data);
     }
 }
