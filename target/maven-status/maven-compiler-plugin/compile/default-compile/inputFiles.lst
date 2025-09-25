@@ -6,6 +6,8 @@
 /app/src/main/java/it/unimore/iot/microfactory/device/RobotCell.java
 /app/src/main/java/it/unimore/iot/microfactory/device/SimulatedDevice.java
 /app/src/main/java/it/unimore/iot/microfactory/manager/DataCollectorManager.java
+/app/src/main/java/it/unimore/iot/microfactory/model/Ack.java
+/app/src/main/java/it/unimore/iot/microfactory/model/Command.java
 /app/src/main/java/it/unimore/iot/microfactory/model/ConveyorBeltStatus.java
 /app/src/main/java/it/unimore/iot/microfactory/model/QualitySensorData.java
 /app/src/main/java/it/unimore/iot/microfactory/model/RobotCellStatus.java

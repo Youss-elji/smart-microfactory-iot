@@ -2,8 +2,8 @@ package it.unimore.iot.microfactory.model;
 
 public class Ack {
     private String cmdType;
-    private String status; // OK|ERROR
-    private String message;
+    private String status;  // OK|ERROR
+    private String message; // breve spiegazione
     private long ts;
 
     public Ack() {
