@@ -1,11 +1,10 @@
 package it.unimore.iot.microfactory.device;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimore.iot.microfactory.communication.MqttClientManager;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 public abstract class SimulatedDevice implements Runnable {
 
@@ -34,11 +33,11 @@ public abstract class SimulatedDevice implements Runnable {
     public void run() {
         try {
             mqttClientManager.connect();
-            start(); // This will call the specific implementation of the subclass
+            start(); // chiamata al comportamento specifico della sottoclasse
         } catch (MqttException e) {
             logger.error("Error during device execution for {}", deviceId, e);
         } catch (InterruptedException e) {
-            if (running) { // Only log as a warning if shutdown was not called
+            if (running) { // log solo se l’interruzione non era prevista
                 logger.warn("Device {} was interrupted unexpectedly.", deviceId);
             }
             Thread.currentThread().interrupt();
@@ -54,7 +53,7 @@ public abstract class SimulatedDevice implements Runnable {
 
     public void shutdown() {
         this.running = false;
-        Thread.currentThread().interrupt();
+        Thread.currentThread().interrupt();  // garantisce che il thread si svegli subito
         logger.info("Shutdown requested for device {}.", deviceId);
     }
 
