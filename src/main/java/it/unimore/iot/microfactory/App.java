@@ -1,8 +1,10 @@
 package it.unimore.iot.microfactory;
 
+import it.unimore.iot.microfactory.adapters.coap.CoapApiServer;
 import it.unimore.iot.microfactory.device.ConveyorBelt;
 import it.unimore.iot.microfactory.device.QualitySensor;
 import it.unimore.iot.microfactory.device.RobotCell;
+import it.unimore.iot.microfactory.domain.StateRepository;
 import it.unimore.iot.microfactory.manager.DataCollectorManager;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
@@ -18,9 +20,16 @@ public class App {
         logger.info("Starting Smart Microfactory Simulation...");
 
         try {
+            // Get the shared state repository instance
+            StateRepository stateRepository = StateRepository.getInstance();
+
             // Create and start the Data Collector Manager
             DataCollectorManager dataCollectorManager = new DataCollectorManager();
             dataCollectorManager.start();
+
+            // Create and start the CoAP API Server
+            CoapApiServer coapApiServer = new CoapApiServer(stateRepository);
+            coapApiServer.start();
 
             // Create device instances
             String cell = "cell-01";
@@ -37,7 +46,7 @@ public class App {
             // Start all device threads
             deviceThreads.forEach(Thread::start);
 
-            logger.info("All devices have been started.");
+            logger.info("All components have been started.");
 
             // Add a shutdown hook to gracefully stop all components
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -60,7 +69,10 @@ public class App {
                     }
                 }
 
-                // Stop the manager
+                // Stop the CoAP server
+                coapApiServer.stop();
+
+                // Stop the MQTT manager
                 try {
                     dataCollectorManager.stop();
                 } catch (MqttException e) {

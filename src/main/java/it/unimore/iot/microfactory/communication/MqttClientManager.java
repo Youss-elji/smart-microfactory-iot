@@ -2,8 +2,6 @@ package it.unimore.iot.microfactory.communication;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.eclipse.paho.client.mqttv3.IMqttClient;
-import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
@@ -32,8 +30,9 @@ public class MqttClientManager {
         this.deviceType = deviceType;
         this.deviceId = deviceId;
 
-        // Read broker URL from environment variable or use default
-        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL")).orElse("tcp://localhost:1883");
+        // Broker da env con default locale
+        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL"))
+                .orElse("tcp://localhost:1883");
 
         String clientId = String.format("%s-%s-%s-%s", CLIENT_ID_PREFIX, cellId, deviceType, UUID.randomUUID());
         MqttClientPersistence persistence = new MemoryPersistence();
@@ -48,20 +47,20 @@ public class MqttClientManager {
             options.setCleanSession(true);
             options.setConnectionTimeout(10);
 
-            // Read username and password from environment variables if they exist
+            // Credenziali da env (se presenti)
             Optional.ofNullable(System.getenv("MQTT_USERNAME")).ifPresent(options::setUserName);
             Optional.ofNullable(System.getenv("MQTT_PASSWORD"))
                     .map(String::toCharArray)
                     .ifPresent(options::setPassword);
 
-            // Configure LWT (Last Will and Testament)
+            // LWT (Last Will & Testament)
             String lwtTopic = String.format("mf/%s/%s/%s/lwt", cellId, deviceType, deviceId);
             options.setWill(lwtTopic, "offline".getBytes(), 1, true);
 
             this.mqttClient.connect(options);
             logger.info("MQTT Client connected to broker: {}", brokerUrl);
 
-            // Publish retained info message
+            // Messaggio info retained
             publishInfoMessage();
         }
     }
@@ -90,32 +89,38 @@ public class MqttClientManager {
     public <T> void publish(String topic, T payload) {
         try {
             if (this.mqttClient.isConnected()) {
-                Optional<byte[]> serializedPayload = serializePayload(payload);
-                if (serializedPayload.isPresent()) {
-                    this.mqttClient.publish(topic, serializedPayload.get(), 1, false);
-                    logger.debug("Published to topic '{}' with payload: {}", topic, payload);
-                }
+                serializePayload(payload).ifPresent(bytes -> {
+                    try {
+                        this.mqttClient.publish(topic, bytes, 1, false);
+                        logger.debug("Published to topic '{}'", topic);
+                    } catch (MqttException e) {
+                        logger.error("Error publishing to topic '{}'", topic, e);
+                    }
+                });
             } else {
                 logger.warn("MQTT client not connected. Cannot publish message to topic '{}'", topic);
             }
-        } catch (MqttException e) {
-            logger.error("Error publishing to topic '{}'", topic, e);
+        } catch (Exception e) {
+            logger.error("Error in publish method for topic '{}'", topic, e);
         }
     }
 
     public <T> void publishRetained(String topic, T payload) {
         try {
             if (this.mqttClient.isConnected()) {
-                Optional<byte[]> serializedPayload = serializePayload(payload);
-                if (serializedPayload.isPresent()) {
-                    this.mqttClient.publish(topic, serializedPayload.get(), 1, true);
-                    logger.debug("Published retained to topic '{}' with payload: {}", topic, payload);
-                }
+                serializePayload(payload).ifPresent(bytes -> {
+                    try {
+                        this.mqttClient.publish(topic, bytes, 1, true);
+                        logger.debug("Published retained to topic '{}'", topic);
+                    } catch (MqttException e) {
+                        logger.error("Error publishing retained to topic '{}'", topic, e);
+                    }
+                });
             } else {
                 logger.warn("MQTT client not connected. Cannot publish message to topic '{}'", topic);
             }
-        } catch (MqttException e) {
-            logger.error("Error publishing retained to topic '{}'", topic, e);
+        } catch (Exception e) {
+            logger.error("Error in publishRetained method for topic '{}'", topic, e);
         }
     }
 
