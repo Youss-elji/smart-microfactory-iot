@@ -54,6 +54,7 @@ public abstract class SimulatedDevice implements Runnable {
 
     public void shutdown() {
         this.running = false;
+        Thread.currentThread().interrupt();
         logger.info("Shutdown requested for device {}.", deviceId);
     }
 
