@@ -1,5 +1,6 @@
 package it.unimore.iot.microfactory.device;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimore.iot.microfactory.communication.MqttClientManager;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
@@ -9,13 +10,19 @@ public abstract class SimulatedDevice implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(SimulatedDevice.class);
 
+    protected final String cellId;
+    protected final String deviceType;
     protected final String deviceId;
     protected final MqttClientManager mqttClientManager;
+    protected final ObjectMapper objectMapper = new ObjectMapper();
+    protected volatile boolean running = true;
 
-    protected SimulatedDevice(String deviceId) {
+    protected SimulatedDevice(String cellId, String deviceType, String deviceId) {
+        this.cellId = cellId;
+        this.deviceType = deviceType;
         this.deviceId = deviceId;
         try {
-            this.mqttClientManager = new MqttClientManager(deviceId);
+            this.mqttClientManager = new MqttClientManager(cellId, deviceType, deviceId);
         } catch (MqttException e) {
             logger.error("Failed to create MQTT client for device {}", deviceId, e);
             throw new RuntimeException("MQTT client creation failed", e);
@@ -30,7 +37,9 @@ public abstract class SimulatedDevice implements Runnable {
         } catch (MqttException e) {
             logger.error("Error during device execution for {}", deviceId, e);
         } catch (InterruptedException e) {
-            logger.warn("Device {} was interrupted.", deviceId);
+            if (running) { // Only log as a warning if shutdown was not called
+                logger.warn("Device {} was interrupted unexpectedly.", deviceId);
+            }
             Thread.currentThread().interrupt();
         } finally {
             try {
@@ -38,7 +47,13 @@ public abstract class SimulatedDevice implements Runnable {
             } catch (MqttException e) {
                 logger.error("Error disconnecting MQTT client for device {}", deviceId, e);
             }
+            logger.info("Device {} shutdown complete.", deviceId);
         }
+    }
+
+    public void shutdown() {
+        this.running = false;
+        logger.info("Shutdown requested for device {}.", deviceId);
     }
 
     /**

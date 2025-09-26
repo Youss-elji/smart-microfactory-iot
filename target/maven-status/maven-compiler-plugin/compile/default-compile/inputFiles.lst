@@ -1,11 +1,15 @@
 /app/src/main/java/it/unimore/iot/microfactory/App.java
 /app/src/main/java/it/unimore/iot/microfactory/Tester.java
+/app/src/main/java/it/unimore/iot/microfactory/adapters/coap/CoapApiServer.java
 /app/src/main/java/it/unimore/iot/microfactory/communication/MqttClientManager.java
 /app/src/main/java/it/unimore/iot/microfactory/device/ConveyorBelt.java
 /app/src/main/java/it/unimore/iot/microfactory/device/QualitySensor.java
 /app/src/main/java/it/unimore/iot/microfactory/device/RobotCell.java
 /app/src/main/java/it/unimore/iot/microfactory/device/SimulatedDevice.java
+/app/src/main/java/it/unimore/iot/microfactory/domain/StateRepository.java
 /app/src/main/java/it/unimore/iot/microfactory/manager/DataCollectorManager.java
+/app/src/main/java/it/unimore/iot/microfactory/model/Ack.java
+/app/src/main/java/it/unimore/iot/microfactory/model/Command.java
 /app/src/main/java/it/unimore/iot/microfactory/model/ConveyorBeltStatus.java
 /app/src/main/java/it/unimore/iot/microfactory/model/QualitySensorData.java
 /app/src/main/java/it/unimore/iot/microfactory/model/RobotCellStatus.java
