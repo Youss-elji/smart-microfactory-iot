@@ -23,3 +23,4 @@ it/unimore/iot/microfactory/model/RobotCellStatus.class
 it/unimore/iot/microfactory/adapters/coap/CoapApiServer$DeviceStateResource.class
 it/unimore/iot/microfactory/Tester.class
 it/unimore/iot/microfactory/adapters/coap/CoapApiServer$DeviceTypeResource.class
+

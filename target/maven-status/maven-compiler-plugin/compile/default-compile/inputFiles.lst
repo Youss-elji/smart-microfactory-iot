@@ -14,3 +14,4 @@
 /app/src/main/java/it/unimore/iot/microfactory/model/QualitySensorData.java
 /app/src/main/java/it/unimore/iot/microfactory/model/RobotCellStatus.java
 /app/src/main/java/it/unimore/iot/microfactory/model/RobotCellStatusEnum.java
+

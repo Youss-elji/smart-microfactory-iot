@@ -1,6 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>it.unimore.iot</groupId>
@@ -9,8 +10,7 @@
     <name>smart-microfactory</name>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
     </properties>
@@ -23,7 +23,7 @@
             <version>1.2.5</version>
         </dependency>
 
-        <!-- CoAP (Eclipse Californium) -->
+        <!-- CoAP -->
         <dependency>
             <groupId>org.eclipse.californium</groupId>
             <artifactId>californium-core</artifactId>
@@ -41,8 +41,9 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.17.2</version>
         </dependency>
+      
+        <!-- Logging semplice (runtime) -->
 
-        <!-- Logging: un solo binding -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
@@ -61,15 +62,28 @@
 
     <build>
         <plugins>
-            <!-- per eseguire il main con mvn exec:java -->
+
+            <!-- Compilatore: usa 'release' al posto di source/target -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
+            </plugin>
+
+            <!-- ESECUZIONE DEL MAIN -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.3.0</version>
+                <version>3.5.1</version>
                 <configuration>
                     <mainClass>it.unimore.iot.microfactory.App</mainClass>
+                    <cleanupDaemonThreads>false</cleanupDaemonThreads>
                 </configuration>
             </plugin>
+
             <!-- per creare un fat-jar eseguibile -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

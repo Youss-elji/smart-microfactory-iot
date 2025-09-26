@@ -2,10 +2,6 @@ package it.unimore.iot.microfactory.communication;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.eclipse.paho.client.mqttv3.IMqttClient;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
@@ -34,7 +30,9 @@ public class MqttClientManager {
         this.deviceType = deviceType;
         this.deviceId = deviceId;
 
-        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL")).orElse("tcp://localhost:1883");
+        // Broker da env con default locale
+        this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL"))
+                .orElse("tcp://localhost:1883");
 
         String clientId = String.format("%s-%s-%s-%s", CLIENT_ID_PREFIX, cellId, deviceType, UUID.randomUUID());
         MqttClientPersistence persistence = new MemoryPersistence();
@@ -49,17 +47,20 @@ public class MqttClientManager {
             options.setCleanSession(true);
             options.setConnectionTimeout(10);
 
+            // Credenziali da env (se presenti)
             Optional.ofNullable(System.getenv("MQTT_USERNAME")).ifPresent(options::setUserName);
             Optional.ofNullable(System.getenv("MQTT_PASSWORD"))
                     .map(String::toCharArray)
                     .ifPresent(options::setPassword);
 
+            // LWT (Last Will & Testament)
             String lwtTopic = String.format("mf/%s/%s/%s/lwt", cellId, deviceType, deviceId);
             options.setWill(lwtTopic, "offline".getBytes(), 1, true);
 
             this.mqttClient.connect(options);
             logger.info("MQTT Client connected to broker: {}", brokerUrl);
 
+            // Messaggio info retained
             publishInfoMessage();
         }
     }
