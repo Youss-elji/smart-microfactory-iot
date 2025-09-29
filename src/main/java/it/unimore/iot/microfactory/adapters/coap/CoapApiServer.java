@@ -20,28 +20,29 @@ public class CoapApiServer {
     private static final Logger log = LoggerFactory.getLogger(CoapApiServer.class);
     private final CoapServer server;
 
+    // Default: 5683
     public CoapApiServer(StateRepository repo) {
-        this(repo, 5683); // Delegate to the constructor with default port
+        this(repo, 5683);
     }
 
     public CoapApiServer(StateRepository repo, int port) {
-        // Use a null config to use defaults, and null address to bind to all interfaces
+        // bind su tutte le interfacce alla porta indicata
         this.server = new CoapServer(null, port);
         registerResources(repo);
+        log.info("Registered {} top-level CoAP resources.", server.getRoot().getChildren().size());
     }
 
     private void registerResources(StateRepository repo) {
         server.add(new FactoryResource(repo));
-        log.info("Registered {} top-level CoAP resources.", server.getRoot().getChildren().size());
     }
 
     public void start() {
         try {
             log.info("Starting CoAP server...");
             server.start();
-            server.getEndpoints().forEach(endpoint -> {
-                log.info("CoAP server listening on: {}:{}", endpoint.getAddress().getHostString(), endpoint.getAddress().getPort());
-            });
+            server.getEndpoints().forEach(ep ->
+                log.info("CoAP server listening on {}:{}", ep.getAddress().getHostString(), ep.getAddress().getPort())
+            );
         } catch (Exception e) {
             log.error("CRITICAL ERROR: Failed to start CoAP server", e);
             throw new RuntimeException("Failed to start CoAP server", e);
@@ -55,7 +56,7 @@ public class CoapApiServer {
         log.info("CoAP server stopped.");
     }
 
-    // --- Dynamic Resource Definitions ---
+    // --- Risorse Dinamiche ---
 
     static class FactoryResource extends CoapResource {
         private final StateRepository repo;
@@ -91,9 +92,7 @@ public class CoapApiServer {
         @Override
         public Resource getChild(String name) {
             Resource child = super.getChild(name);
-            if (child != null) {
-                return child;
-            }
+            if (child != null) return child;
             return new DeviceTypeResource(name, cellId, repo);
         }
     }
@@ -158,23 +157,26 @@ public class CoapApiServer {
             this.deviceType = type;
             this.deviceId = id;
 
+            // Observe
             setObservable(true);
+            setObserveType(CoAP.Type.CON);
             getAttributes().setObservable();
+
+            // Content-Formats supportati e attributi CoRE
             getAttributes().addContentType(ContentFormat.APPLICATION_SENML_JSON);
             getAttributes().addContentType(ContentFormat.TEXT_PLAIN);
             getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
 
-            String resourceType;
-            if (type.equals("robot") || type.equals("conveyor")) {
-                resourceType = "it.unimore.device.actuator.task";
+            if ("robot".equals(type) || "conveyor".equals(type)) {
+                getAttributes().addResourceType("it.unimore.device.actuator.task");
                 getAttributes().addInterfaceDescription("core.a");
             } else {
-                resourceType = "it.unimore.device.sensor.capsule";
+                getAttributes().addResourceType("it.unimore.device.sensor.capsule");
                 getAttributes().addInterfaceDescription("core.s");
             }
-            getAttributes().addResourceType(resourceType);
 
-            repo.addListener(cellId, type, id, (newState) -> changed());
+            // Notifiche su update di stato
+            repo.addListener(cellId, type, id, newState -> changed());
         }
 
         @Override
@@ -182,7 +184,7 @@ public class CoapApiServer {
             repo.get(cellId, deviceType, deviceId).ifPresentOrElse(
                 state -> {
                     int accept = exchange.getRequestOptions().getAccept();
-                    if (accept == -1 || accept == ContentFormat.APPLICATION_JSON) { // Default to JSON
+                    if (accept == -1 || accept == ContentFormat.APPLICATION_JSON) {
                         handleJsonRequest(exchange, state);
                     } else if (accept == ContentFormat.APPLICATION_SENML_JSON) {
                         handleSenMLRequest(exchange, state);
@@ -207,8 +209,8 @@ public class CoapApiServer {
 
         private void handleTextRequest(CoapExchange exchange, Object state) {
             String response;
-            if (state instanceof RobotCellStatus) {
-                response = ((RobotCellStatus) state).getStatus().toString();
+            if (state instanceof RobotCellStatus s) {
+                response = s.getStatus().toString();
             } else {
                 response = state.toString();
             }
@@ -217,13 +219,14 @@ public class CoapApiServer {
 
         private void handleSenMLRequest(CoapExchange exchange, Object state) {
             try {
-                String baseName = String.format("%s/%s/%s/", cellId, deviceType, deviceId);
+                String baseName = "%s/%s/%s/".formatted(cellId, deviceType, deviceId);
                 SenMLPack pack;
-                if (state instanceof RobotCellStatus) {
-                    RobotCellStatus s = (RobotCellStatus) state;
-                    pack = SenML.fromNumeric(baseName, "status", s.getStatus().ordinal(), "state", s.getTimestamp());
+                if (state instanceof RobotCellStatus s) {
+                    pack = SenML.fromNumeric(baseName, "status",
+                            s.getStatus().ordinal(), "state", s.getTimestamp());
                 } else {
-                    pack = SenML.fromNumeric(baseName, "value", 0, "N/A", System.currentTimeMillis());
+                    pack = SenML.fromNumeric(baseName, "value",
+                            0, "N/A", System.currentTimeMillis());
                 }
                 String json = new ObjectMapper().writeValueAsString(pack);
                 exchange.respond(CoAP.ResponseCode.CONTENT, json, ContentFormat.APPLICATION_SENML_JSON);
