@@ -2,31 +2,34 @@ package it.unimore.iot.microfactory.adapters.coap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimore.iot.microfactory.domain.StateRepository;
+import it.unimore.iot.microfactory.model.RobotCellStatus;
+import it.unimore.iot.microfactory.util.coap.ContentFormat;
+import it.unimore.iot.microfactory.util.senml.SenML;
+import it.unimore.iot.microfactory.util.senml.SenMLPack;
 import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.CoapServer;
 import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
-import org.eclipse.californium.elements.config.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 public class CoapApiServer {
 
     private static final Logger log = LoggerFactory.getLogger(CoapApiServer.class);
     private final CoapServer server;
 
+    // Default: 5683
     public CoapApiServer(StateRepository repo) {
-        // Create a configuration that does not load from file
-        Configuration config = Configuration.createStandardWithoutFile();
-        this.server = new CoapServer(config);
+        this(repo, 5683);
+    }
+
+    public CoapApiServer(StateRepository repo, int port) {
+        // bind su tutte le interfacce alla porta indicata
+        this.server = new CoapServer(null, port);
         registerResources(repo);
+        log.info("Registered {} top-level CoAP resources.", server.getRoot().getChildren().size());
     }
 
     private void registerResources(StateRepository repo) {
@@ -34,9 +37,16 @@ public class CoapApiServer {
     }
 
     public void start() {
-        log.info("Starting CoAP server on UDP/5683 (default)...");
-        server.start();
-        log.info("CoAP server started.");
+        try {
+            log.info("Starting CoAP server...");
+            server.start();
+            server.getEndpoints().forEach(ep ->
+                log.info("CoAP server listening on {}:{}", ep.getAddress().getHostString(), ep.getAddress().getPort())
+            );
+        } catch (Exception e) {
+            log.error("CRITICAL ERROR: Failed to start CoAP server", e);
+            throw new RuntimeException("Failed to start CoAP server", e);
+        }
     }
 
     public void stop() {
@@ -46,12 +56,7 @@ public class CoapApiServer {
         log.info("CoAP server stopped.");
     }
 
-    private static String extractVar(CoapExchange ex, int pos) {
-        String[] parts = ex.getRequestOptions().getUriPath().toArray(new String[0]);
-        return (pos > 0 && pos < parts.length) ? parts[pos] : "";
-    }
-
-    // --- Dynamic Resource Definitions ---
+    // --- Risorse Dinamiche ---
 
     static class FactoryResource extends CoapResource {
         private final StateRepository repo;
@@ -87,9 +92,7 @@ public class CoapApiServer {
         @Override
         public Resource getChild(String name) {
             Resource child = super.getChild(name);
-            if (child != null) {
-                return child;
-            }
+            if (child != null) return child;
             return new DeviceTypeResource(name, cellId, repo);
         }
     }
@@ -154,27 +157,82 @@ public class CoapApiServer {
             this.deviceType = type;
             this.deviceId = id;
 
+            // Observe
             setObservable(true);
+            setObserveType(CoAP.Type.CON);
             getAttributes().setObservable();
-            getAttributes().addInterfaceDescription("core.s");
-            getAttributes().addResourceType(String.format("%s-state", type));
 
-            repo.addListener(cellId, type, id, (newState) -> changed());
+            // Content-Formats supportati e attributi CoRE
+            getAttributes().addContentType(ContentFormat.APPLICATION_SENML_JSON);
+            getAttributes().addContentType(ContentFormat.TEXT_PLAIN);
+            getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
+
+            if ("robot".equals(type) || "conveyor".equals(type)) {
+                getAttributes().addResourceType("it.unimore.device.actuator.task");
+                getAttributes().addInterfaceDescription("core.a");
+            } else {
+                getAttributes().addResourceType("it.unimore.device.sensor.capsule");
+                getAttributes().addInterfaceDescription("core.s");
+            }
+
+            // Notifiche su update di stato
+            repo.addListener(cellId, type, id, newState -> changed());
         }
 
         @Override
         public void handleGET(CoapExchange exchange) {
             repo.get(cellId, deviceType, deviceId).ifPresentOrElse(
                 state -> {
-                    try {
-                        String json = new ObjectMapper().writeValueAsString(state);
-                        exchange.respond(CoAP.ResponseCode.CONTENT, json, MediaTypeRegistry.APPLICATION_JSON);
-                    } catch (Exception e) {
-                        exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR);
+                    int accept = exchange.getRequestOptions().getAccept();
+                    if (accept == -1 || accept == ContentFormat.APPLICATION_JSON) {
+                        handleJsonRequest(exchange, state);
+                    } else if (accept == ContentFormat.APPLICATION_SENML_JSON) {
+                        handleSenMLRequest(exchange, state);
+                    } else if (accept == ContentFormat.TEXT_PLAIN) {
+                        handleTextRequest(exchange, state);
+                    } else {
+                        exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE);
                     }
                 },
                 () -> exchange.respond(CoAP.ResponseCode.NOT_FOUND)
             );
+        }
+
+        private void handleJsonRequest(CoapExchange exchange, Object state) {
+            try {
+                String json = new ObjectMapper().writeValueAsString(state);
+                exchange.respond(CoAP.ResponseCode.CONTENT, json, ContentFormat.APPLICATION_JSON);
+            } catch (Exception e) {
+                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR);
+            }
+        }
+
+        private void handleTextRequest(CoapExchange exchange, Object state) {
+            String response;
+            if (state instanceof RobotCellStatus s) {
+                response = s.getStatus().toString();
+            } else {
+                response = state.toString();
+            }
+            exchange.respond(CoAP.ResponseCode.CONTENT, response, ContentFormat.TEXT_PLAIN);
+        }
+
+        private void handleSenMLRequest(CoapExchange exchange, Object state) {
+            try {
+                String baseName = "%s/%s/%s/".formatted(cellId, deviceType, deviceId);
+                SenMLPack pack;
+                if (state instanceof RobotCellStatus s) {
+                    pack = SenML.fromNumeric(baseName, "status",
+                            s.getStatus().ordinal(), "state", s.getTimestamp());
+                } else {
+                    pack = SenML.fromNumeric(baseName, "value",
+                            0, "N/A", System.currentTimeMillis());
+                }
+                String json = new ObjectMapper().writeValueAsString(pack);
+                exchange.respond(CoAP.ResponseCode.CONTENT, json, ContentFormat.APPLICATION_SENML_JSON);
+            } catch (Exception e) {
+                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR);
+            }
         }
     }
 }

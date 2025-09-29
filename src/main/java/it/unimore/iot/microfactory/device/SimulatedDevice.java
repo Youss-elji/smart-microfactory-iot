@@ -33,7 +33,7 @@ public abstract class SimulatedDevice implements Runnable {
     public void run() {
         try {
             mqttClientManager.connect();
-            start(); // chiamata al comportamento specifico della sottoclasse
+            start(); // comportamento specifico della sottoclasse
         } catch (MqttException e) {
             logger.error("Error during device execution for {}", deviceId, e);
         } catch (InterruptedException e) {
@@ -58,9 +58,10 @@ public abstract class SimulatedDevice implements Runnable {
     }
 
     /**
-     * The main simulation logic for the device goes here.
-     * This method is called after the MQTT client is connected.
-     * @throws InterruptedException if the thread is interrupted.
+     * Logica principale di simulazione del device.
+     * Questo metodo è chiamato dopo la connessione MQTT.
+     *
+     * @throws InterruptedException se il thread viene interrotto.
      */
     public abstract void start() throws InterruptedException;
 }
