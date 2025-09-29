@@ -128,8 +128,8 @@ public class DataCollectorManager {
                         }
                     }
                     case "conveyor" -> data = objectMapper.readValue(message.getPayload(), ConveyorBeltStatus.class);
-                    case "quality" -> data = objectMapper.readValue(message.getPayload(), QualitySensorData.class);
-                    default -> logger.warn("Unknown device type in topic: {}", parts.type());
+                    case "quality"  -> data = objectMapper.readValue(message.getPayload(), QualitySensorData.class);
+                    default         -> logger.warn("Unknown device type in topic: {}", parts.type());
                 }
 
                 if (data != null) {
@@ -156,7 +156,7 @@ public class DataCollectorManager {
     }
 
     private void printStatistics() {
-        // placeholder: volendo si possono estrarre KPI da StateRepository
+        // placeholder: qui puoi calcolare KPI a partire dallo StateRepository
         logger.info("Periodic check... (you can compute KPIs from StateRepository here)");
     }
 
