@@ -24,6 +24,8 @@ hs_err_pid*
 replay_pid*
 # Maven
 target/
+**/default-compile/*.lst
+
 
 # IntelliJ / IDE
 .idea/

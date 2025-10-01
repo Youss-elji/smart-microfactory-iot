@@ -4,23 +4,18 @@ import it.unimore.iot.microfactory.domain.StateRepository;
 
 public class CoapServerTester {
   public static void main(String[] args) {
-    // Set a default exception handler to catch any hidden error
-    Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-      System.err.println("[FATAL] Uncaught exception in thread " + t.getName());
-      e.printStackTrace();
-      System.exit(10);
-    });
-
+    int port = 5683;
+    if (args.length > 0) {
+      try { port = Integer.parseInt(args[0]); } catch (Exception ignored) {}
+    }
+    System.out.println("[TEST] Bootstrapping CoAP server ONLY on udp://" + port + " ...");
     try {
-      System.out.println("[TEST] Bootstrapping CoAP server only...");
-      // For this test, we can use a dummy repository as no state is needed
-      StateRepository dummyRepository = StateRepository.getInstance();
-      CoapApiServer server = new CoapApiServer(dummyRepository, 5683);
+      CoapApiServer server = new CoapApiServer(StateRepository.getInstance(), port);
       server.start();
-      System.out.println("[TEST] CoAP server started on UDP/5683. Process will run indefinitely.");
-      Thread.currentThread().join(); // Keep the main thread alive
+      System.out.println("[TEST] STARTED. Press Ctrl+C to exit.");
+      Thread.currentThread().join(); // keep foreground
     } catch (Throwable t) {
-      System.err.println("[FATAL] Failed to start CoAP server in tester.");
+      System.err.println("[TEST][FATAL] Can't start CoAP server:");
       t.printStackTrace();
       System.exit(2);
     }
