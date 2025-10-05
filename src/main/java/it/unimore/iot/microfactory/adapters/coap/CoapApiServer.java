@@ -306,8 +306,8 @@ public class CoapApiServer {
                 cmd = cmd.trim().toUpperCase();
                 LOG.info("COAP GLOBAL CMD -> factory-wide, cmd={}", cmd);
 
-                // TODO: implementa logica per comandi globali
-                // repo.publishGlobalCommand(cmd);
+                // Publish global command via repository
+                repo.publishGlobalCommand(cmd);
 
                 exchange.respond(CoAP.ResponseCode.CHANGED, "Command accepted");
             } catch (Exception e) {
@@ -385,8 +385,8 @@ public class CoapApiServer {
                 cmd = cmd.trim().toUpperCase();
                 LOG.info("COAP CMD -> cell={}, type={}, id={}, cmd={}", cellId, deviceType, deviceId, cmd);
 
-                // TODO: integra qui l'inoltro reale del comando (MQTT/Repo)
-                // repo.publishCommand(cellId, deviceType, deviceId, cmd);
+                // Publish command to specific device via repository
+                repo.publishCommand(cellId, deviceType, deviceId, cmd);
 
                 if (stateResource != null) {
                     stateResource.changed();

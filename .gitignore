@@ -34,3 +34,15 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Docker
+mosquitto-data/
+logs/
+
+# Maven build artifacts
+dependency-reduced-pom.xml
+
+# Application logs
+*.log
+app.log
+nohup.out

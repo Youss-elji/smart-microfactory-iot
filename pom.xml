@@ -27,10 +27,17 @@
         </dependency>
 
         <!-- CoAP (Californium) -->
+        <!-- CoAP (Californium) -->
         <dependency>
             <groupId>org.eclipse.californium</groupId>
             <artifactId>californium-core</artifactId>
             <version>${californium.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.eclipse.californium</groupId>
@@ -45,14 +52,23 @@
             <version>${jackson.version}</version>
         </dependency>
 
-        <!-- forza slf4j-api 2.0.13 -->
+        <!-- forza slf4j-api 2.0.13-->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>2.0.13</version>
         </dependency>
 
-        <!-- escludi l'api 1.7 da Californium se la trascina -->
+
+        <!-- Logback binding (migliore di slf4j-simple) -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.6</version>
+        </dependency>
+
+
+        <!-- escludi l'api 1.7 da Californium se la trascina-->
         <dependency>
             <groupId>org.eclipse.californium</groupId>
             <artifactId>californium-core</artifactId>
@@ -65,13 +81,15 @@
             </exclusions>
         </dependency>
 
-        <!-- binding -->
+
+        <!-- binding
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.13</version>
             <scope>runtime</scope>
         </dependency>
+        -->
 
         <!-- Test -->
         <dependency>
@@ -135,5 +153,49 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Profile for skipping CoAP tests -->
+        <profile>
+            <id>skip-coap</id>
+            <properties>
+                <skipTests>true</skipTests>
+            </properties>
+        </profile>
+
+        <!-- Profile for production build with optimizations -->
+        <profile>
+            <id>production</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <configuration>
+                            <minimizeJar>true</minimizeJar>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Profile for development with fast rebuild -->
+        <profile>
+            <id>dev</id>
+            <properties>
+                <skipTests>true</skipTests>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>

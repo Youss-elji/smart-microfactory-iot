@@ -90,24 +90,40 @@ It implements **CoRE Link Format** discovery, **content negotiation** including 
 - **Resource Discovery** (CoRE Link Format)  
   `GET /.well-known/core`  
   Each resource declares:
-  - `rt` (Resource Type), e.g. `it.unimore.device.sensor.temperature`, `it.unimore.device.sensor.capsule`, `it.unimore.device.actuator.task`
+  - `rt` (Resource Type), e.g. `it.unimore.device.sensor.capsule`, `it.unimore.device.actuator.task`
   - `if` (Interface Description), typically `core.s` for sensors, `core.a` for actuators
   - `ct` (supported Content-Formats), including `application/senml+json` and `text/plain`
 
 - **Device listing**  
-  `GET /factory/{cellId}/devices`
+  `GET /factory/{cellId}/devices`  
+  Returns JSON list of all devices in a cell
 
 - **Device state (single resource)**  
   `GET /factory/{cellId}/{deviceType}/{deviceId}/state`  
   Supports **content negotiation** via `Accept`:
   - `application/senml+json` (ID 110)
-  - `application/json`
+  - `application/json` (default)
   - `text/plain` (fallback)
 
 - **Observe (RFC 7641)**  
-  Same state endpoint with the `Observe` option to receive notifications on changes.
+  Same state endpoint with observe for real-time notifications on state changes
 
----
+- **Global factory commands** (NEW)  
+  `POST /factory/cmd`  
+  Send factory-wide commands. Accepts:
+  - `text/plain`: `"RESET"`, `"START"`, `"STOP"`, `"EMERGENCY"`
+  - `application/json`: `{"cmd":"START"}`
+
+  Returns: `2.04 CHANGED` on success, `4.00 BAD REQUEST` or `4.06 NOT ACCEPTABLE` on error
+
+- **Device-specific commands** (NEW)  
+  `POST /factory/{cellId}/{deviceType}/{deviceId}/cmd`  
+  Send commands to individual devices. Supported commands:
+  - `RESET` - Reset device to idle state
+  - `START` - Start device operation
+  - `STOP` - Stop device operation
+
+  Returns: `2.04 CHANGED` on success
 
 ## Testing CoAP with `coap-client` (WSL/Linux, optional)
 
