@@ -1,7 +1,20 @@
 package it.unimore.iot.microfactory.model;
 
+/**
+ * Rappresenta un comando inviato a un dispositivo della microfactory.
+ * Questo POJO viene serializzato in JSON per essere inviato, ad esempio,
+ * tramite MQTT o CoAP.
+ */
 public class Command {
-    private String type; // START|STOP|RESET
+
+    /**
+     * Il tipo di comando da eseguire (es. "START", "STOP", "RESET").
+     */
+    private String type;
+
+    /**
+     * Il timestamp UNIX (in millisecondi) che indica quando il comando è stato creato.
+     */
     private long ts;
 
     public Command() {

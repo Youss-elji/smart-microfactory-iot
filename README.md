@@ -1,175 +1,135 @@
-# Smart Microfactory IoT Project
+# 🏭 Smart Microfactory IoT - Server CoAP
 
-This project simulates a smart microfactory using **Java 17** and **MQTT** for communication between different smart devices (Robot, Conveyor, Quality Sensor).  
-The **Manager** component also exposes a **CoAP API** (Californium) for external monitoring and querying, aligned with typical **lab requirements** (CoRE Link Format, SenML+JSON, Observe, automatic client).
+## 📋 Descrizione
+Server CoAP per il controllo e monitoraggio di una microfactory intelligente.
+Implementa il pattern REST su protocollo CoAP per dispositivi IoT a basso consumo.
 
----
+## 🚀 Installazione
 
-## Overview
+### Prerequisiti
+- Java 17+
+- Maven 3.6+
+- (Opzionale) `coap-client` per testing (es. `libcoap2-bin` su Debian/Ubuntu)
 
-Main components:
-- **RobotCell** – simulated robot arm that processes items.  
-- **ConveyorBelt** – simulated conveyor belt that moves items.  
-- **QualitySensor** – simulated quality inspection sensor.  
-- **DataCollectorManager** – collects device telemetry/events via MQTT and updates the digital twin (state repo).  
-- **CoAP API Server** – exposes CoAP resources to query/observe device states in real time.
-
----
-
-## Build & Run
-
-Prerequisites: **Java 17** and **Maven**.
-
-1) Build the fat JAR:
+### Compilazione
 ```bash
-mvn clean package
+# Eseguire dalla root del progetto
+mvn clean package -DskipTests
 ```
 
-2) Ensure an MQTT broker is running (e.g., Mosquitto on `tcp://localhost:1883`). Then run:
+## 🏃 Esecuzione
+
+### Prerequisito
+Assicurarsi che un broker MQTT sia in esecuzione (es. Mosquitto su `tcp://localhost:1883`).
+
+### Avvio del Server
+Una volta compilato il progetto, eseguire il JAR "shaded" che contiene tutte le dipendenze.
+
+#### Linux/Mac/WSL
 ```bash
-java -jar target/smart-microfactory-0.0.1-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/smart-microfactory-*-shaded.jar
 ```
 
-Alternative (via Maven exec):
-```bash
-mvn exec:java
+#### Windows (PowerShell/CMD)
+```powershell
+java -jar target\smart-microfactory-*-shaded.jar
 ```
 
-> Tip: If you need a clean build without CoAP tests, use the profile:
-> ```bash
-> mvn -P no-coap-tests clean package
-> ```
+Il server si avvierà e si metterà in ascolto sulla porta CoAP (default: `5683`).
 
----
+## 🧪 Testing
 
-## MQTT Topic Schema
+### Test Automatici
+Lo script `coap_test_suite_fixed.sh` esegue una serie di test di fumo per verificare gli endpoint principali.
 
-Structured topic layout:
-
-- **Telemetry**  
-  `mf/<cell>/<type>/<id>/status`  
-  e.g., `mf/cell-01/robot/robot-001/status`
-
-- **Info (retained)**  
-  `mf/<cell>/<type>/<id>/info`  
-  Published at connect; device metadata.
-
-- **LWT (retained)**  
-  `mf/<cell>/<type>/<id>/lwt`  
-  Payload: `"offline"` (via MQTT Last Will).
-
-- **Commands**  
-  `mf/<cell>/<type>/<id>/cmd`  
-  e.g., `START`, `STOP`, `RESET`.
-
-- **Ack**  
-  `mf/<cell>/<type>/<id>/ack`  
-  Device acknowledgments to commands.
-
-### Quick MQTT Test (optional)
+#### Linux/Mac/WSL
 ```bash
-# Start broker
-mosquitto -v
+# Rendi lo script eseguibile
+chmod +x coap_test_suite_fixed.sh
 
-# Subscribe to everything
-mosquitto_sub -v -t "mf/#"
-
-# Send a RESET command
-mosquitto_pub -t "mf/cell-01/robot/robot-001/cmd" -m '{"type":"RESET","ts":1699999999}'
+# Esegui i test
+./coap_test_suite_fixed.sh
 ```
 
----
-
-## CoAP API – Lab Compliance
-
-The manager exposes a CoAP API on `udp://localhost:5683`.  
-It implements **CoRE Link Format** discovery, **content negotiation** including **SenML+JSON**, and **OBSERVE** on dynamic resources.
-
-### Endpoints & Features
-
-- **Resource Discovery** (CoRE Link Format)  
-  `GET /.well-known/core`  
-  Each resource declares:
-  - `rt` (Resource Type), e.g. `it.unimore.device.sensor.capsule`, `it.unimore.device.actuator.task`
-  - `if` (Interface Description), typically `core.s` for sensors, `core.a` for actuators
-  - `ct` (supported Content-Formats), including `application/senml+json` and `text/plain`
-
-- **Device listing**  
-  `GET /factory/{cellId}/devices`  
-  Returns JSON list of all devices in a cell
-
-- **Device state (single resource)**  
-  `GET /factory/{cellId}/{deviceType}/{deviceId}/state`  
-  Supports **content negotiation** via `Accept`:
-  - `application/senml+json` (ID 110)
-  - `application/json` (default)
-  - `text/plain` (fallback)
-
-- **Observe (RFC 7641)**  
-  Same state endpoint with observe for real-time notifications on state changes
-
-- **Global factory commands** (NEW)  
-  `POST /factory/cmd`  
-  Send factory-wide commands. Accepts:
-  - `text/plain`: `"RESET"`, `"START"`, `"STOP"`, `"EMERGENCY"`
-  - `application/json`: `{"cmd":"START"}`
-
-  Returns: `2.04 CHANGED` on success, `4.00 BAD REQUEST` or `4.06 NOT ACCEPTABLE` on error
-
-- **Device-specific commands** (NEW)  
-  `POST /factory/{cellId}/{deviceType}/{deviceId}/cmd`  
-  Send commands to individual devices. Supported commands:
-  - `RESET` - Reset device to idle state
-  - `START` - Start device operation
-  - `STOP` - Stop device operation
-
-  Returns: `2.04 CHANGED` on success
-
-## Testing CoAP with `coap-client` (WSL/Linux, optional)
-
-If `libcoap3-bin` is installed, use `coap-client` (or `coap-client-notls` depending on distro):
-
-1) **Discover resources**  
+#### Windows (con Git Bash o WSL)
 ```bash
-coap-client -m get coap://localhost:5683/.well-known/core
-# or: /usr/bin/coap-client-notls -m get ...
+# Esegui lo script tramite sh
+sh coap_test_suite_fixed.sh
 ```
 
-2) **Get device state in SenML+JSON**  
+### Test Manuali con `coap-client`
+È possibile interagire manualmente con gli endpoint usando `coap-client`.
+
 ```bash
-# -A 110 sets Accept to application/senml+json
-coap-client -m get -A 110 coap://localhost:5683/factory/cell-01/robot/robot-001/state
+# GET stato fabbrica (endpoint di base)
+coap-client -m get coap://localhost:5683/factory
+
+# GET stato di un dispositivo specifico (es. robot-001 in cell-01)
+coap-client -m get coap://localhost:5683/factory/cell-01/robot/robot-001/state
+
+# POST comando a un dispositivo
+# Invia il comando START al robot-001
+echo '{"cmd":"START"}' | coap-client -m post -T "application/json" -f - coap://localhost:5683/factory/cell-01/robot/robot-001/cmd
 ```
 
-3) **Observe for 60 seconds**  
-```bash
-coap-client -m get -s 60 coap://localhost:5683/factory/cell-01/robot/robot-001/state
+## 📊 Output Atteso
+
+### Stato Fabbrica (GET /factory)
+Un semplice JSON che descrive lo stato generale del servizio.
+```json
+{
+  "name": "smart-microfactory",
+  "status": "operational",
+  "version": "1.0"
+}
 ```
 
----
-
-## Automatic Java Client (Discovery → Validation → Action)
-
-The project includes an **automatic CoAP client** that:
-1) Fetches and parses `/.well-known/core`  
-2) Validates `rt`/`if`/`ct`  
-3) Reads sensor state (SenML)  
-4) Interacts with an actuator (POST/PUT)
-
-Run it from another terminal (with the app running):
-```bash
-mvn -q exec:java -Dexec.mainClass="it.unimore.iot.microfactory.coap.client.CoapAutomaticClient"
+### Stato Dispositivo (GET /factory/{cell}/{type}/{id}/state)
+Esempio di risposta per un robot, in formato JSON.
+```json
+{
+  "deviceId": "robot-001",
+  "timestamp": 1673346600000,
+  "status": "IDLE",
+  "processingTime": 0.0
+}
 ```
 
----
+### Risposta a un Comando (POST .../cmd)
+Una risposta `2.04 Changed` senza corpo indica che il comando è stato accettato.
 
-## Notes & Troubleshooting
+## 🏗️ Architettura
 
-- On Windows/WSL, if UDP tooling (e.g., `netstat | grep`) is unreliable, prefer the **Java-based probes** included in the project to verify `/.well-known/core`.  
-- If port `5683` is busy, stop other CoAP servers or adjust the configured port for local tests.
+Il server CoAP espone dinamicamente le risorse in base alla gerarchia della fabbrica.
 
----
+```
+┌─────────────────────────────────┐
+│      Client CoAP (es. Tester)   │
+└─────────────┬───────────────────┘
+              │
+              │ CoAP (UDP:5683)
+              │
+┌─────────────▼───────────────────┐
+│        CoapApiServer            │
+├─────────────────────────────────┤
+│  Risorse Dinamiche:             │
+│  - /factory                     │
+│    └─ /{cellId}                 │
+│       ├─ /devices               │
+│       └─ /{deviceType}          │
+│          └─ /{deviceId}         │
+│             ├─ /state (GET, OBS)│
+│             └─ /cmd (POST, GET) │
+└─────────────┬───────────────────┘
+              │
+┌─────────────▼───────────────────┐
+│     StateRepository             │
+│ (Digital Twin della fabbrica)   │
+└─────────────────────────────────┘
+```
 
-## License
-
-MIT (unless otherwise specified in submodules).
+## 📝 Note Implementative
+- **Framework CoAP**: Eclipse Californium.
+- **Routing Dinamico**: Le risorse vengono create al volo navigando l'URI. Ad esempio, una richiesta a `/factory/cell-01` istanzia una `CellResource` con `name="cell-01"`.
+- **Pattern Observer**: La risorsa `DeviceStateResource` è osservabile (`Observable`). Si registra come listener sullo `StateRepository` e notifica i client CoAP quando lo stato del dispositivo cambia.
+- **Thread-Safety**: La gestione dello stato è demandata allo `StateRepository`, che deve essere thread-safe per gestire accessi concorrenti da MQTT e CoAP.

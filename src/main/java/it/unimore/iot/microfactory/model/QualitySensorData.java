@@ -1,11 +1,34 @@
 package it.unimore.iot.microfactory.model;
 
+/**
+ * Rappresenta i dati di telemetria inviati da un sensore di controllo qualità.
+ * Questo POJO aggrega le metriche sul conteggio dei pezzi processati.
+ */
 public class QualitySensorData {
 
+    /**
+     * Identificativo univoco del dispositivo (es. "quality-sensor-001").
+     */
     private String deviceId;
+
+    /**
+     * Timestamp UNIX (in millisecondi) che indica quando i dati sono stati registrati.
+     */
     private long timestamp;
+
+    /**
+     * Il numero totale di oggetti processati dal sensore fino a questo momento.
+     */
     private int totalProcessed;
+
+    /**
+     * Il numero di oggetti risultati conformi (di buona qualità).
+     */
     private int goodCount;
+
+    /**
+     * Il numero di oggetti risultati difettosi (di cattiva qualità).
+     */
     private int badCount;
 
     public QualitySensorData() {
