@@ -13,58 +13,86 @@ import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
+import org.eclipse.californium.elements.config.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.eclipse.californium.elements.config.Configuration;
-import org.eclipse.californium.elements.config.UdpConfig;
-import org.eclipse.californium.elements.config.TcpConfig;
-
+/**
+ * Gestisce il server CoAP per la microfactory intelligente.
+ * Questo server espone un'API REST-like per monitorare e controllare
+ * i dispositivi della fabbrica tramite il protocollo CoAP.
+ * L'architettura è basata su risorse CoAP nidificate dinamicamente,
+ * che permettono di navigare la gerarchia della fabbrica: /factory/{cellId}/{deviceType}/{deviceId}/...
+ */
 public class CoapApiServer {
 
     private static final Logger log = LoggerFactory.getLogger(CoapApiServer.class);
     private final CoapServer server;
 
+    /**
+     * Inizializza il server sulla porta CoAP di default (5683).
+     *
+     * @param repo Il repository dello stato condiviso per accedere ai dati dei dispositivi.
+     */
     public CoapApiServer(StateRepository repo) {
         this(repo, 5683);
     }
 
+    /**
+     * Inizializza il server sulla porta specificata.
+     *
+     * @param repo Il repository dello stato condiviso per accedere ai dati dei dispositivi.
+     * @param port La porta di ascolto per il server CoAP.
+     */
     public CoapApiServer(StateRepository repo, int port) {
+        // Configurazione degli endpoint con parametri di rete ottimizzati per ambienti IoT.
         Configuration cfg = Configuration.createStandardWithoutFile();
-        UdpConfig.register();
-        TcpConfig.register();
-
         this.server = new CoapServer(cfg, port);
         registerResources(repo);
-        log.info("Registered {} top-level CoAP resources.", server.getRoot().getChildren().size());
+        log.info("Risorse CoAP di primo livello registrate: {}", server.getRoot().getChildren().size());
     }
 
+    /**
+     * Registra le risorse CoAP di primo livello sul server.
+     *
+     * @param repo Il repository dello stato da passare alle risorse.
+     */
     private void registerResources(StateRepository repo) {
         server.add(new FactoryResource(repo));
     }
 
+    /**
+     * Avvia il server CoAP e si mette in ascolto sulla porta configurata.
+     */
     public void start() {
         try {
-            log.info("Starting CoAP server...");
+            log.info("Avvio del server CoAP...");
             server.start();
             server.getEndpoints().forEach(ep ->
-                    log.info("CoAP server listening on {}:{}", ep.getAddress().getHostString(), ep.getAddress().getPort())
+                    log.info("Server CoAP in ascolto su {}:{}", ep.getAddress().getHostString(), ep.getAddress().getPort())
             );
         } catch (Exception e) {
-            log.error("CRITICAL ERROR: Failed to start CoAP server", e);
-            throw new RuntimeException("Failed to start CoAP server", e);
+            log.error("ERRORE CRITICO: Impossibile avviare il server CoAP", e);
+            throw new RuntimeException("Impossibile avviare il server CoAP", e);
         }
     }
 
+    /**
+     * Ferma il server CoAP e rilascia le risorse.
+     */
     public void stop() {
-        log.info("Stopping CoAP server...");
+        log.info("Arresto del server CoAP...");
         server.stop();
         server.destroy();
-        log.info("CoAP server stopped.");
+        log.info("Server CoAP arrestato.");
     }
 
-    // --- Risorse Dinamiche ---
-
+    /**
+     * Risorsa radice che rappresenta l'intera fabbrica.
+     * Espone l'endpoint `/factory`.
+     * GET: Ritorna uno stato generale della fabbrica.
+     * FIGLI DINAMICI: Instrada le richieste per `{cellId}` alla `CellResource` corrispondente.
+     */
     static class FactoryResource extends CoapResource {
         private final StateRepository repo;
 
@@ -76,6 +104,7 @@ public class CoapApiServer {
             getAttributes().addInterfaceDescription("core.ll");
             getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
 
+            // Aggiunge la risorsa per i comandi globali
             add(new GlobalCommandResource("cmd", repo));
         }
 
@@ -85,36 +114,59 @@ public class CoapApiServer {
             exchange.respond(CoAP.ResponseCode.CONTENT, summary, MediaTypeRegistry.APPLICATION_JSON);
         }
 
+        /**
+         * Gestisce il routing dinamico per le celle.
+         * Se la risorsa richiesta non è statica (es. 'cmd'), la interpreta come un ID di cella.
+         */
         @Override
         public Resource getChild(String name) {
             Resource existing = super.getChild(name);
-            if (existing != null) return existing;
+            if (existing != null) {
+                return existing;
+            }
+            // Se non è una risorsa fissa, la consideriamo una cella dinamica
             return new CellResource(name, repo);
         }
     }
 
+    /**
+     * Risorsa che rappresenta una singola cella produttiva.
+     * Espone l'endpoint `/factory/{cellId}`.
+     * FIGLI DINAMICI: Instrada le richieste per `{deviceType}` alla `DeviceTypeResource`.
+     */
     static class CellResource extends CoapResource {
         private final StateRepository repo;
-        private final String cellId;
 
         CellResource(String name, StateRepository repo) {
             super(name);
-            this.cellId = name;
             this.repo = repo;
             getAttributes().setTitle("Cell " + name);
             getAttributes().addResourceType("cell");
             getAttributes().addInterfaceDescription("core.ll");
-            add(new DevicesResource("devices", cellId, repo));
+
+            // Aggiunge la risorsa fissa 'devices' per elencare i dispositivi della cella
+            add(new DevicesResource("devices", name, repo));
         }
 
+        /**
+         * Gestisce il routing dinamico per i tipi di dispositivo.
+         */
         @Override
         public Resource getChild(String name) {
             Resource child = super.getChild(name);
-            if (child != null) return child;
-            return new DeviceTypeResource(name, cellId, repo);
+            if (child != null) {
+                return child;
+            }
+            // Se non è 'devices', la consideriamo un tipo di dispositivo dinamico
+            return new DeviceTypeResource(name, getName(), repo);
         }
     }
 
+    /**
+     * Risorsa per elencare tutti i dispositivi di una cella.
+     * Espone l'endpoint `/factory/{cellId}/devices`.
+     * GET: Ritorna la lista in formato JSON di tutti i dispositivi registrati nella cella.
+     */
     static class DevicesResource extends CoapResource {
         private final StateRepository repo;
         private final String cellId;
@@ -135,11 +187,17 @@ public class CoapApiServer {
                 String json = repo.listDevicesJson(cellId);
                 exchange.respond(CoAP.ResponseCode.CONTENT, json, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
-                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR, "Error listing devices");
+                log.error("Errore durante l'elenco dei dispositivi per la cella {}", cellId, e);
+                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR, "Errore nell'elenco dispositivi");
             }
         }
     }
 
+    /**
+     * Risorsa che rappresenta una categoria di dispositivi (es. 'robot').
+     * Espone l'endpoint `/factory/{cellId}/{deviceType}`.
+     * FIGLI DINAMICI: Instrada le richieste per `{deviceId}` alla `DeviceIdResource`.
+     */
     static class DeviceTypeResource extends CoapResource {
         private final StateRepository repo;
         private final String cellId;
@@ -155,27 +213,39 @@ public class CoapApiServer {
             getAttributes().addInterfaceDescription("core.ll");
         }
 
+        /**
+         * Gestisce il routing dinamico per gli ID di dispositivo.
+         */
         @Override
         public Resource getChild(String name) {
             return new DeviceIdResource(name, cellId, type, repo);
         }
     }
 
+    /**
+     * Risorsa che rappresenta un singolo dispositivo.
+     * Espone l'endpoint `/factory/{cellId}/{deviceType}/{deviceId}`.
+     * Questa risorsa agisce come un contenitore per le sotto-risorse 'state' e 'cmd'.
+     */
     static class DeviceIdResource extends CoapResource {
-        private final DeviceStateResource stateResource;
-
         DeviceIdResource(String name, String cellId, String type, StateRepository repo) {
             super(name);
             getAttributes().setTitle("Device " + name);
             getAttributes().addResourceType("it.unimore.device." + type);
             getAttributes().addInterfaceDescription("core.ll");
 
-            this.stateResource = new DeviceStateResource("state", cellId, type, name, repo);
+            DeviceStateResource stateResource = new DeviceStateResource("state", cellId, type, name, repo);
             add(stateResource);
             add(new DeviceCommandResource("cmd", cellId, type, name, repo, stateResource));
         }
     }
 
+    /**
+     * Gestisce lo stato real-time dei dispositivi.
+     * Espone l'endpoint `.../{deviceId}/state`.
+     * GET: Recupera lo stato attuale del dispositivo. Supporta content negotiation per JSON, SenML+JSON e Text-Plain.
+     * OBSERVABLE: Supporta la modalità Observe per ricevere notifiche push sui cambiamenti di stato.
+     */
     static class DeviceStateResource extends CoapResource {
         private final StateRepository repo;
         private final String cellId;
@@ -192,7 +262,6 @@ public class CoapApiServer {
             setObservable(true);
             setObserveType(CoAP.Type.CON);
             getAttributes().setObservable();
-
             getAttributes().addContentType(ContentFormat.APPLICATION_SENML_JSON);
             getAttributes().addContentType(ContentFormat.TEXT_PLAIN);
             getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
@@ -206,9 +275,16 @@ public class CoapApiServer {
             }
 
             getAttributes().setTitle("State of " + id + " (" + type + ")");
+            // Aggiunge un listener per notificare i client CoAP quando lo stato cambia
             repo.addListener(cellId, type, id, newState -> changed());
         }
 
+        /**
+         * Processa la richiesta GET per recuperare lo stato del dispositivo.
+         * La risposta varia in base all'header 'Accept' della richiesta (content negotiation).
+         *
+         * @param exchange Il contesto della richiesta CoAP.
+         */
         @Override
         public void handleGET(CoapExchange exchange) {
             repo.get(cellId, deviceType, deviceId).ifPresentOrElse(
@@ -224,15 +300,16 @@ public class CoapApiServer {
                             exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE);
                         }
                     },
-                    () -> exchange.respond(CoAP.ResponseCode.NOT_FOUND, "Device not found")
+                    () -> exchange.respond(CoAP.ResponseCode.NOT_FOUND, "Dispositivo non trovato")
             );
         }
 
         private void handleJsonRequest(CoapExchange exchange, Object state) {
             try {
                 String json = new ObjectMapper().writeValueAsString(state);
-                exchange.respond(CoAP.ResponseCode.CONTENT, json, ContentFormat.APPLICATION_JSON);
+                exchange.respond(CoAP.ResponseCode.CONTENT, json, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
+                log.error("Errore durante la serializzazione JSON per {}", deviceId, e);
                 exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR);
             }
         }
@@ -244,7 +321,7 @@ public class CoapApiServer {
             } else {
                 response = state.toString();
             }
-            exchange.respond(CoAP.ResponseCode.CONTENT, response, ContentFormat.TEXT_PLAIN);
+            exchange.respond(CoAP.ResponseCode.CONTENT, response, MediaTypeRegistry.TEXT_PLAIN);
         }
 
         private void handleSenMLRequest(CoapExchange exchange, Object state) {
@@ -255,19 +332,26 @@ public class CoapApiServer {
                     pack = SenML.fromNumeric(baseName, "status",
                             s.getStatus().ordinal(), "state", s.getTimestamp());
                 } else {
+                    // Fallback per stati non noti
                     pack = SenML.fromNumeric(baseName, "value",
                             0, "N/A", System.currentTimeMillis());
                 }
                 String json = new ObjectMapper().writeValueAsString(pack);
                 exchange.respond(CoAP.ResponseCode.CONTENT, json, MediaTypeRegistry.APPLICATION_SENML_JSON);
             } catch (Exception e) {
+                log.error("Errore durante la serializzazione SenML per {}", deviceId, e);
                 exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR);
             }
         }
     }
 
+    /**
+     * Endpoint per inviare comandi globali a tutta la fabbrica.
+     * Espone l'endpoint `/factory/cmd`.
+     * POST: Esegue un comando su tutti i dispositivi (es. RESET, START, STOP).
+     * GET: Restituisce la lista dei comandi supportati.
+     */
     static class GlobalCommandResource extends CoapResource {
-        private static final Logger LOG = LoggerFactory.getLogger(GlobalCommandResource.class);
         private final StateRepository repo;
         private final ObjectMapper mapper = new ObjectMapper();
 
@@ -284,35 +368,32 @@ public class CoapApiServer {
         @Override
         public void handlePOST(CoapExchange exchange) {
             try {
-                // CRITICAL: Validate Content-Format
                 int ct = exchange.getRequestOptions().getContentFormat();
-                LOG.debug("Received POST with Content-Format: {}", ct);
+                log.debug("Ricevuto POST su /factory/cmd con Content-Format: {}", ct);
 
-                // Accept only text/plain (0), application/json (50), or unspecified (-1)
+                // Accetta solo text/plain (0), application/json (50) o non specificato (-1)
                 if (ct != -1 && ct != MediaTypeRegistry.TEXT_PLAIN && ct != MediaTypeRegistry.APPLICATION_JSON) {
-                    LOG.warn("Rejected unsupported Content-Format: {} ({})",
-                            ct, MediaTypeRegistry.toString(ct));
-                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE,
-                            "Only text/plain or application/json supported");
+                    log.warn("Content-Format non supportato: {} ({})", ct, MediaTypeRegistry.toString(ct));
+                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE, "Supportati solo text/plain o application/json");
                     return;
                 }
 
                 String cmd = extractCommand(exchange, ct);
                 if (cmd == null || cmd.isBlank()) {
-                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Missing 'cmd'");
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Comando 'cmd' mancante nel payload");
                     return;
                 }
 
                 cmd = cmd.trim().toUpperCase();
-                LOG.info("COAP GLOBAL CMD -> factory-wide, cmd={}", cmd);
+                log.info("COAP CMD GLOBALE -> cmd={}", cmd);
 
-                // Publish global command via repository
+                // Pubblica il comando globale attraverso il repository
                 repo.publishGlobalCommand(cmd);
 
-                exchange.respond(CoAP.ResponseCode.CHANGED, "Command accepted");
+                exchange.respond(CoAP.ResponseCode.CHANGED, "Comando accettato");
             } catch (Exception e) {
-                LOG.error("Error handling POST /factory/cmd", e);
-                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Invalid request");
+                log.error("Errore durante la gestione di POST /factory/cmd", e);
+                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida");
             }
         }
 
@@ -324,19 +405,25 @@ public class CoapApiServer {
 
         private String extractCommand(CoapExchange exchange, int ct) throws Exception {
             byte[] payload = exchange.getRequestPayload();
+            if (payload == null) return "";
 
             if (ct == MediaTypeRegistry.APPLICATION_JSON) {
-                JsonNode node = mapper.readTree(payload == null ? new byte[0] : payload);
+                JsonNode node = mapper.readTree(payload);
                 return node.hasNonNull("cmd") ? node.get("cmd").asText() : null;
             } else {
-                // Default to text/plain for ct == -1 or ct == 0
-                return (payload == null) ? "" : new String(payload);
+                // Default a text/plain se il content-type è assente o text/plain
+                return new String(payload);
             }
         }
     }
 
+    /**
+     * Endpoint per inviare comandi a un dispositivo specifico.
+     * Espone l'endpoint `.../{deviceId}/cmd`.
+     * POST: Esegue un comando sul dispositivo (es. START, STOP). Comandi supportati: START, STOP, RESET.
+     * GET: Restituisce la lista dei comandi supportati dal dispositivo.
+     */
     static class DeviceCommandResource extends CoapResource {
-        private static final Logger LOG = LoggerFactory.getLogger(DeviceCommandResource.class);
         private final StateRepository repo;
         private final String cellId;
         private final String deviceType;
@@ -363,39 +450,36 @@ public class CoapApiServer {
         @Override
         public void handlePOST(CoapExchange exchange) {
             try {
-                // CRITICAL: Validate Content-Format
                 int ct = exchange.getRequestOptions().getContentFormat();
-                LOG.debug("Received POST with Content-Format: {}", ct);
+                log.debug("Ricevuto POST su /cmd per {} con Content-Format: {}", deviceId, ct);
 
-                // Accept only text/plain (0), application/json (50), or unspecified (-1)
                 if (ct != -1 && ct != MediaTypeRegistry.TEXT_PLAIN && ct != MediaTypeRegistry.APPLICATION_JSON) {
-                    LOG.warn("Rejected unsupported Content-Format: {} for device {}/{}/{}",
-                            ct, cellId, deviceType, deviceId);
-                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE,
-                            "Only text/plain or application/json supported");
+                    log.warn("Content-Format non supportato: {} per il dispositivo {}/{}/{}", ct, cellId, deviceType, deviceId);
+                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE, "Supportati solo text/plain o application/json");
                     return;
                 }
 
                 String cmd = extractCommand(exchange, ct);
                 if (cmd == null || cmd.isBlank()) {
-                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Missing 'cmd'");
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Comando 'cmd' mancante nel payload");
                     return;
                 }
 
                 cmd = cmd.trim().toUpperCase();
-                LOG.info("COAP CMD -> cell={}, type={}, id={}, cmd={}", cellId, deviceType, deviceId, cmd);
+                log.info("COAP CMD -> cell={}, type={}, id={}, cmd={}", cellId, deviceType, deviceId, cmd);
 
-                // Publish command to specific device via repository
+                // Pubblica il comando per il dispositivo specifico
                 repo.publishCommand(cellId, deviceType, deviceId, cmd);
 
+                // Notifica un cambiamento di stato per aggiornare i client in observe
                 if (stateResource != null) {
                     stateResource.changed();
                 }
 
                 exchange.respond(CoAP.ResponseCode.CHANGED);
             } catch (Exception e) {
-                LOG.error("Error handling POST /cmd", e);
-                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Invalid request");
+                log.error("Errore durante la gestione di POST /cmd per {}", deviceId, e);
+                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida");
             }
         }
 
@@ -407,12 +491,13 @@ public class CoapApiServer {
 
         private String extractCommand(CoapExchange exchange, int ct) throws Exception {
             byte[] payload = exchange.getRequestPayload();
+            if (payload == null) return "";
 
             if (ct == MediaTypeRegistry.APPLICATION_JSON) {
-                JsonNode node = mapper.readTree(payload == null ? new byte[0] : payload);
+                JsonNode node = mapper.readTree(payload);
                 return node.hasNonNull("cmd") ? node.get("cmd").asText() : null;
             } else {
-                return (payload == null) ? "" : new String(payload);
+                return new String(payload);
             }
         }
     }

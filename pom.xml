@@ -19,14 +19,13 @@
     </properties>
 
     <dependencies>
-        <!-- MQTT -->
+        <!-- MQTT Communication -->
         <dependency>
             <groupId>org.eclipse.paho</groupId>
             <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
             <version>1.2.5</version>
         </dependency>
 
-        <!-- CoAP (Californium) -->
         <!-- CoAP (Californium) -->
         <dependency>
             <groupId>org.eclipse.californium</groupId>
@@ -45,53 +44,26 @@
             <version>${californium.version}</version>
         </dependency>
 
-        <!-- JSON -->
+        <!-- JSON Serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
         </dependency>
 
-        <!-- forza slf4j-api 2.0.13-->
+        <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>2.0.13</version>
+            <version>${slf4j.version}</version>
         </dependency>
-
-
-        <!-- Logback binding (migliore di slf4j-simple) -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>1.5.6</version>
         </dependency>
 
-
-        <!-- escludi l'api 1.7 da Californium se la trascina-->
-        <dependency>
-            <groupId>org.eclipse.californium</groupId>
-            <artifactId>californium-core</artifactId>
-            <version>${californium.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-
-        <!-- binding
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>2.0.13</version>
-            <scope>runtime</scope>
-        </dependency>
-        -->
-
-        <!-- Test -->
+        <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -102,7 +74,7 @@
 
     <build>
         <plugins>
-            <!-- Compiler -->
+            <!-- Compiler Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -112,7 +84,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Exec (run da Maven se serve) -->
+            <!-- Exec Plugin -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -123,7 +95,7 @@
                 </configuration>
             </plugin>
 
-            <!-- FAT JAR -->
+            <!-- Fat JAR (Shade) Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -133,14 +105,9 @@
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
-                            <!-- ATTACCA il jar shaded con classifier visibile -->
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>shaded</shadedClassifierName>
-
-                            <!-- NON creare dependency-reduced-pom -->
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-
-                            <!-- Merge dei META-INF/services (SPI) di Californium -->
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
@@ -155,7 +122,7 @@
     </build>
 
     <profiles>
-        <!-- Profile for skipping CoAP tests -->
+        <!-- Profile to skip tests -->
         <profile>
             <id>skip-coap</id>
             <properties>
@@ -163,7 +130,7 @@
             </properties>
         </profile>
 
-        <!-- Profile for production build with optimizations -->
+        <!-- Profile for production build -->
         <profile>
             <id>production</id>
             <build>
@@ -189,7 +156,7 @@
             </build>
         </profile>
 
-        <!-- Profile for development with fast rebuild -->
+        <!-- Profile for development -->
         <profile>
             <id>dev</id>
             <properties>

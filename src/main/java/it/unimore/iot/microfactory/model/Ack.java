@@ -1,9 +1,31 @@
 package it.unimore.iot.microfactory.model;
 
+/**
+ * Rappresenta un messaggio di riscontro (acknowledgment) inviato da un dispositivo
+ * in risposta a un comando ricevuto.
+ * Questo POJO viene utilizzato per confermare se un'operazione è stata
+ * accettata o ha generato un errore.
+ */
 public class Ack {
+
+    /**
+     * Il tipo di comando a cui questo riscontro si riferisce (es. "START", "RESET").
+     */
     private String cmdType;
-    private String status;  // OK|ERROR
-    private String message; // breve spiegazione
+
+    /**
+     * Lo stato del riscontro, tipicamente "OK" o "ERROR".
+     */
+    private String status;
+
+    /**
+     * Un messaggio testuale opzionale che fornisce dettagli aggiuntivi sul riscontro.
+     */
+    private String message;
+
+    /**
+     * Il timestamp UNIX (in millisecondi) in cui il riscontro è stato generato.
+     */
     private long ts;
 
     public Ack() {
