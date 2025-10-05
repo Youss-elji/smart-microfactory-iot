@@ -40,6 +40,11 @@ echo "==> COAP client : $COAP"
 echo "==> Base URI    : $BASE"
 echo
 
+# Wait for server to be ready
+echo "Waiting for CoAP server to be ready..."
+sleep 3
+echo
+
 # -------------------------------------------------------------------
 # /.well-known/core
 # -------------------------------------------------------------------

@@ -110,5 +110,38 @@ public class StateRepository {
             logger.error("Error serializing state for {}/{}/{}", cell, type, id, e);
             return "{\"error\":\"Internal Server Error\"}";
         }
+
+    }
+
+    /**
+     * Publish a global command to all devices in the factory
+     * @param cmd Command to execute (e.g., RESET, START, STOP, EMERGENCY)
+     */
+    public void publishGlobalCommand(String cmd) {
+        logger.info("Global factory command received: {}", cmd);
+        // TODO: Integrate with MQTT broker to broadcast command
+        // Example: mqttClient.publish("mf/broadcast/cmd", buildCommandPayload(cmd));
+
+        // For now, just log the command
+        logger.warn("Global command '{}' received but MQTT publishing not yet implemented", cmd);
+    }
+
+    /**
+     * Publish a command to a specific device
+     * @param cell Cell ID
+     * @param type Device type (robot, conveyor, quality)
+     * @param id Device ID
+     * @param cmd Command to execute (e.g., RESET, START, STOP)
+     */
+    public void publishCommand(String cell, String type, String id, String cmd) {
+        String topic = String.format("mf/%s/%s/%s/cmd", cell, type, id);
+        logger.info("Publishing command '{}' to device {}/{}/{}", cmd, cell, type, id);
+
+        // TODO: Integrate with MQTT client
+        // Example: mqttClient.publish(topic, buildCommandPayload(cmd));
+
+        // For now, just log the command
+        logger.warn("Command '{}' for device {}/{}/{} received but MQTT publishing not yet implemented",
+                cmd, cell, type, id);
     }
 }

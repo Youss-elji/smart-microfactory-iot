@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: microfactory-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    restart: unless-stopped
+    networks:
+      - microfactory-net
+
+  microfactory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: microfactory-app
+    depends_on:
+      - mosquitto
+    ports:
+      - "5683:5683/udp"
+    environment:
+      - MQTT_BROKER_URL=tcp://mosquitto:1883
+      - AUTO_RESET_ON_ALARM=true
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - microfactory-net
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
+
+networks:
+  microfactory-net:
+    driver: bridge
