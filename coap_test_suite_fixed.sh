@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Script di test automatico per gli endpoint CoAP della microfactory.
 # Prerequisiti: coap-client installato (es. `sudo apt-get install libcoap2-bin` su Debian/Ubuntu).
 # Lo script rileva automaticamente se eseguito in WSL per usare l'IP corretto.
@@ -9,7 +9,7 @@ echo "=== Test Suite CoAP Microfactory ==="
 echo
 
 # --- Configurazione ---
-COAP_CLIENT=${COAP_CLIENT:-coap-client} # Default: coap-client. Può essere cambiato se il binario ha un altro nome.
+COAP_CLIENT=${COAP_CLIENT:-/usr/bin/coap-client-openssl} # Default: coap-client. Può essere cambiato se il binario ha un altro nome.
 TIMEOUT=${TIMEOUT:-10}
 
 # URI di Base: se non impostato, in WSL2 viene ricavato l'IP di Windows per raggiungere il server.
