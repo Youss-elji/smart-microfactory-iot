@@ -1,4 +1,4 @@
-package it.unimore.iot.microfactory.device;
+package it.unimore.iot.microfactory.device.simulator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimore.iot.microfactory.model.Ack;

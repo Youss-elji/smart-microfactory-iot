@@ -115,14 +115,17 @@ else
   $COAP_CLIENT -m get -A 110 "$STATE_URI" -s "$TIMEOUT" 2>/dev/null | head -n1 && pass "GET stato (SenML+JSON) OK" || fail "GET stato (SenML+JSON) fallito"
 
   echo "--- Test 3c: POST comandi al robot ---"
-  check_code "2.04" $COAP_CLIENT -m post -e "RESET" -t 0 "$CMD_URI"
-  check_code "2.04" $COAP_CLIENT -m post -t 50 -e '{"cmd":"START"}' "$CMD_URI"
+  RESET_PAYLOAD='{"type":"RESET"}'
+  NOW_TS=$(($(date +%s%N)/1000000))
+  START_PAYLOAD=$(printf '{"type":"START","ts":%s}' "$NOW_TS")
+  check_code "2.04" $COAP_CLIENT -m post -t 50 -e "$RESET_PAYLOAD" "$CMD_URI"
+  check_code "2.04" $COAP_CLIENT -m post -t 50 -e "$START_PAYLOAD" "$CMD_URI"
 fi
 echo
 
 echo "--- Test 4: Comandi Globali (/factory/cmd) ---"
-check_code "2.04" $COAP_CLIENT -m post -e "RESET" -t 0 "$BASE_URI/factory/cmd"
-check_code "2.04" $COAP_CLIENT -m post -t 50 -e '{"cmd":"START"}' "$BASE_URI/factory/cmd"
+check_code "2.04" $COAP_CLIENT -m post -t 50 -e '{"type":"RESET"}' "$BASE_URI/factory/cmd"
+check_code "2.04" $COAP_CLIENT -m post -t 50 -e '{"type":"EMERGENCY"}' "$BASE_URI/factory/cmd"
 echo
 
 echo "--- Test 5: Test Negativi (gestione errori) ---"

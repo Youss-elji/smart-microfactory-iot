@@ -1,6 +1,9 @@
 package it.unimore.iot.microfactory.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.unimore.iot.microfactory.communication.mqtt.CommandPublisher;
+import it.unimore.iot.microfactory.model.Command;
+import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +20,7 @@ public class StateRepository {
     private final Map<String, Object> states;
     private final Map<String, List<Consumer<Object>>> listeners;
     private final ObjectMapper objectMapper;
+    private volatile CommandPublisher commandPublisher;
 
     private StateRepository() {
         this.states = new ConcurrentHashMap<>();
@@ -29,6 +33,11 @@ public class StateRepository {
             instance = new StateRepository();
         }
         return instance;
+    }
+
+    public void registerCommandPublisher(CommandPublisher commandPublisher) {
+        this.commandPublisher = commandPublisher;
+        logger.info("CommandPublisher registered in StateRepository");
     }
 
     public void upsert(String cell, String type, String id, Object stateObj) {
@@ -117,13 +126,22 @@ public class StateRepository {
      * Publish a global command to all devices in the factory
      * @param cmd Command to execute (e.g., RESET, START, STOP, EMERGENCY)
      */
-    public void publishGlobalCommand(String cmd) {
-        logger.info("Global factory command received: {}", cmd);
-        // TODO: Integrate with MQTT broker to broadcast command
-        // Example: mqttClient.publish("mf/broadcast/cmd", buildCommandPayload(cmd));
+    public boolean publishGlobalCommand(Command command) {
+        String type = command != null ? command.getType() : null;
+        logger.info("Global factory command received: {}", type);
+        if (!ensurePublisherAvailable() || type == null || type.isBlank()) {
+            logger.error("Cannot publish global command: missing type");
+            return false;
+        }
 
-        // For now, just log the command
-        logger.warn("Global command '{}' received but MQTT publishing not yet implemented", cmd);
+        Command normalized = normalizeCommand(command);
+        try {
+            commandPublisher.publishGlobalCommand(normalized);
+            return true;
+        } catch (MqttException e) {
+            logger.error("Error publishing global command {}", normalized.getType(), e);
+            return false;
+        }
     }
 
     /**
@@ -133,15 +151,41 @@ public class StateRepository {
      * @param id Device ID
      * @param cmd Command to execute (e.g., RESET, START, STOP)
      */
-    public void publishCommand(String cell, String type, String id, String cmd) {
-        String topic = String.format("mf/%s/%s/%s/cmd", cell, type, id);
-        logger.info("Publishing command '{}' to device {}/{}/{}", cmd, cell, type, id);
+    public boolean publishCommand(String cell, String type, String id, Command command) {
+        String cmdType = command != null ? command.getType() : null;
+        logger.info("Publishing command '{}' to device {}/{}/{}", cmdType, cell, type, id);
 
-        // TODO: Integrate with MQTT client
-        // Example: mqttClient.publish(topic, buildCommandPayload(cmd));
+        if (!ensurePublisherAvailable() || cmdType == null || cmdType.isBlank()) {
+            logger.error("Cannot publish command to {}/{}/{}: missing type", cell, type, id);
+            return false;
+        }
 
-        // For now, just log the command
-        logger.warn("Command '{}' for device {}/{}/{} received but MQTT publishing not yet implemented",
-                cmd, cell, type, id);
+        Command normalized = normalizeCommand(command);
+        try {
+            commandPublisher.publishDeviceCommand(cell, type, id, normalized);
+            return true;
+        } catch (MqttException e) {
+            logger.error("Error publishing command {} to device {}/{}/{}", normalized.getType(), cell, type, id, e);
+            return false;
+        }
+    }
+
+    private boolean ensurePublisherAvailable() {
+        if (commandPublisher == null) {
+            logger.error("CommandPublisher not registered. Cannot forward commands to MQTT broker.");
+            return false;
+        }
+        return true;
+    }
+
+    private Command normalizeCommand(Command command) {
+        Command result = command != null ? command : new Command();
+        if (result.getType() != null) {
+            result.setType(result.getType().trim().toUpperCase());
+        }
+        if (result.getTs() <= 0) {
+            result.setTs(System.currentTimeMillis());
+        }
+        return result;
     }
 }

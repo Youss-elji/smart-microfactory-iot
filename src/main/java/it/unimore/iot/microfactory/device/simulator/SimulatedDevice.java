@@ -1,7 +1,7 @@
-package it.unimore.iot.microfactory.device;
+package it.unimore.iot.microfactory.device.simulator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimore.iot.microfactory.communication.MqttClientManager;
+import it.unimore.iot.microfactory.communication.mqtt.MqttClientManager;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

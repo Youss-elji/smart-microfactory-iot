@@ -1,8 +1,9 @@
 package it.unimore.iot.microfactory.adapters.coap;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimore.iot.microfactory.domain.StateRepository;
+import it.unimore.iot.microfactory.model.Ack;
+import it.unimore.iot.microfactory.model.Command;
 import it.unimore.iot.microfactory.model.RobotCellStatus;
 import it.unimore.iot.microfactory.util.coap.ContentFormat;
 import it.unimore.iot.microfactory.util.senml.SenML;
@@ -17,6 +18,8 @@ import org.eclipse.californium.elements.config.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Set;
+
 /**
  * Gestisce il server CoAP per la microfactory intelligente.
  * Questo server espone un'API REST-like per monitorare e controllare
@@ -27,6 +30,8 @@ import org.slf4j.LoggerFactory;
 public class CoapApiServer {
 
     private static final Logger log = LoggerFactory.getLogger(CoapApiServer.class);
+    private static final Set<String> SUPPORTED_DEVICE_COMMANDS = Set.of("RESET", "START", "STOP");
+    private static final Set<String> SUPPORTED_GLOBAL_COMMANDS = Set.of("RESET", "START", "STOP", "EMERGENCY");
     private final CoapServer server;
 
     /**
@@ -361,7 +366,6 @@ public class CoapApiServer {
             getAttributes().setTitle("Factory Global Command");
             getAttributes().addResourceType("it.unimore.factory.command");
             getAttributes().addInterfaceDescription("core.a");
-            getAttributes().addContentType(MediaTypeRegistry.TEXT_PLAIN);
             getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
         }
 
@@ -371,49 +375,73 @@ public class CoapApiServer {
                 int ct = exchange.getRequestOptions().getContentFormat();
                 log.debug("Ricevuto POST su /factory/cmd con Content-Format: {}", ct);
 
-                // Accetta solo text/plain (0), application/json (50) o non specificato (-1)
-                if (ct != -1 && ct != MediaTypeRegistry.TEXT_PLAIN && ct != MediaTypeRegistry.APPLICATION_JSON) {
+                if (ct != -1 && ct != MediaTypeRegistry.APPLICATION_JSON) {
                     log.warn("Content-Format non supportato: {} ({})", ct, MediaTypeRegistry.toString(ct));
-                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE, "Supportati solo text/plain o application/json");
+                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE,
+                            "Supportato solo application/json con payload Command");
                     return;
                 }
 
-                String cmd = extractCommand(exchange, ct);
-                if (cmd == null || cmd.isBlank()) {
-                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Comando 'cmd' mancante nel payload");
+                Command command = extractCommand(exchange);
+                if (command == null || command.getType() == null || command.getType().isBlank()) {
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST,
+                            "Campo 'type' mancante nel payload Command");
                     return;
                 }
 
-                cmd = cmd.trim().toUpperCase();
-                log.info("COAP CMD GLOBALE -> cmd={}", cmd);
+                command.setType(command.getType().trim().toUpperCase());
+                if (!SUPPORTED_GLOBAL_COMMANDS.contains(command.getType())) {
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST,
+                            "Comando non supportato. Valori ammessi: " + SUPPORTED_GLOBAL_COMMANDS);
+                    return;
+                }
 
-                // Pubblica il comando globale attraverso il repository
-                repo.publishGlobalCommand(cmd);
+                log.info("COAP CMD GLOBALE -> cmd={}", command.getType());
 
-                exchange.respond(CoAP.ResponseCode.CHANGED, "Comando accettato");
+                boolean forwarded = repo.publishGlobalCommand(command);
+                if (!forwarded) {
+                    exchange.respond(CoAP.ResponseCode.SERVICE_UNAVAILABLE,
+                            "Impossibile inoltrare il comando al broker MQTT");
+                    return;
+                }
+
+                Ack ack = new Ack(command.getType(), "ACCEPTED",
+                        "Comando globale inoltrato al broker MQTT", System.currentTimeMillis());
+                String body = mapper.writeValueAsString(ack);
+                exchange.respond(CoAP.ResponseCode.CHANGED, body, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
                 log.error("Errore durante la gestione di POST /factory/cmd", e);
-                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida");
+                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida: " + e.getMessage());
             }
         }
 
         @Override
         public void handleGET(CoapExchange exchange) {
-            String body = "{\"supported\":[\"RESET\",\"START\",\"STOP\",\"EMERGENCY\"]}";
-            exchange.respond(CoAP.ResponseCode.CONTENT, body, MediaTypeRegistry.APPLICATION_JSON);
+            try {
+                var body = mapper.createObjectNode();
+                var supported = mapper.createArrayNode();
+                SUPPORTED_GLOBAL_COMMANDS.forEach(supported::add);
+                body.set("supported", supported);
+
+                var example = mapper.createObjectNode();
+                example.put("type", "RESET");
+                example.put("ts", System.currentTimeMillis());
+                body.set("payloadExample", example);
+
+                exchange.respond(CoAP.ResponseCode.CONTENT, mapper.writeValueAsString(body),
+                        MediaTypeRegistry.APPLICATION_JSON);
+            } catch (Exception e) {
+                log.error("Errore durante la serializzazione della risposta GET /factory/cmd", e);
+                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR, "Errore di serializzazione");
+            }
         }
 
-        private String extractCommand(CoapExchange exchange, int ct) throws Exception {
+        private Command extractCommand(CoapExchange exchange) throws Exception {
             byte[] payload = exchange.getRequestPayload();
-            if (payload == null) return "";
-
-            if (ct == MediaTypeRegistry.APPLICATION_JSON) {
-                JsonNode node = mapper.readTree(payload);
-                return node.hasNonNull("cmd") ? node.get("cmd").asText() : null;
-            } else {
-                // Default a text/plain se il content-type è assente o text/plain
-                return new String(payload);
+            if (payload == null || payload.length == 0) {
+                return null;
             }
+            return mapper.readValue(payload, Command.class);
         }
     }
 
@@ -443,7 +471,6 @@ public class CoapApiServer {
             getAttributes().setTitle("Device Command");
             getAttributes().addResourceType("it.unimore.device.command");
             getAttributes().addInterfaceDescription("core.a");
-            getAttributes().addContentType(MediaTypeRegistry.TEXT_PLAIN);
             getAttributes().addContentType(MediaTypeRegistry.APPLICATION_JSON);
         }
 
@@ -453,52 +480,78 @@ public class CoapApiServer {
                 int ct = exchange.getRequestOptions().getContentFormat();
                 log.debug("Ricevuto POST su /cmd per {} con Content-Format: {}", deviceId, ct);
 
-                if (ct != -1 && ct != MediaTypeRegistry.TEXT_PLAIN && ct != MediaTypeRegistry.APPLICATION_JSON) {
+                if (ct != -1 && ct != MediaTypeRegistry.APPLICATION_JSON) {
                     log.warn("Content-Format non supportato: {} per il dispositivo {}/{}/{}", ct, cellId, deviceType, deviceId);
-                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE, "Supportati solo text/plain o application/json");
+                    exchange.respond(CoAP.ResponseCode.NOT_ACCEPTABLE,
+                            "Supportato solo application/json con payload Command");
                     return;
                 }
 
-                String cmd = extractCommand(exchange, ct);
-                if (cmd == null || cmd.isBlank()) {
-                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Comando 'cmd' mancante nel payload");
+                Command command = extractCommand(exchange);
+                if (command == null || command.getType() == null || command.getType().isBlank()) {
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Campo 'type' mancante nel payload Command");
                     return;
                 }
 
-                cmd = cmd.trim().toUpperCase();
-                log.info("COAP CMD -> cell={}, type={}, id={}, cmd={}", cellId, deviceType, deviceId, cmd);
+                command.setType(command.getType().trim().toUpperCase());
+                if (!SUPPORTED_DEVICE_COMMANDS.contains(command.getType())) {
+                    exchange.respond(CoAP.ResponseCode.BAD_REQUEST,
+                            "Comando non supportato. Valori ammessi: " + SUPPORTED_DEVICE_COMMANDS);
+                    return;
+                }
+
+                log.info("COAP CMD -> cell={}, type={}, id={}, cmd={}", cellId, deviceType, deviceId, command.getType());
 
                 // Pubblica il comando per il dispositivo specifico
-                repo.publishCommand(cellId, deviceType, deviceId, cmd);
+                boolean forwarded = repo.publishCommand(cellId, deviceType, deviceId, command);
+                if (!forwarded) {
+                    exchange.respond(CoAP.ResponseCode.SERVICE_UNAVAILABLE,
+                            "Impossibile inoltrare il comando al broker MQTT");
+                    return;
+                }
 
                 // Notifica un cambiamento di stato per aggiornare i client in observe
                 if (stateResource != null) {
                     stateResource.changed();
                 }
 
-                exchange.respond(CoAP.ResponseCode.CHANGED);
+                Ack ack = new Ack(command.getType(), "ACCEPTED",
+                        "Comando inoltrato al broker MQTT", System.currentTimeMillis());
+                String body = mapper.writeValueAsString(ack);
+                exchange.respond(CoAP.ResponseCode.CHANGED, body, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
                 log.error("Errore durante la gestione di POST /cmd per {}", deviceId, e);
-                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida");
+                exchange.respond(CoAP.ResponseCode.BAD_REQUEST, "Richiesta non valida: " + e.getMessage());
             }
         }
 
         @Override
         public void handleGET(CoapExchange exchange) {
-            String body = "{\"supported\":[\"RESET\",\"START\",\"STOP\"]}";
-            exchange.respond(CoAP.ResponseCode.CONTENT, body, MediaTypeRegistry.APPLICATION_JSON);
+            try {
+                var body = mapper.createObjectNode();
+                var supported = mapper.createArrayNode();
+                SUPPORTED_DEVICE_COMMANDS.forEach(supported::add);
+                body.set("supported", supported);
+
+                var example = mapper.createObjectNode();
+                example.put("type", "START");
+                example.put("ts", System.currentTimeMillis());
+                body.set("payloadExample", example);
+
+                exchange.respond(CoAP.ResponseCode.CONTENT, mapper.writeValueAsString(body),
+                        MediaTypeRegistry.APPLICATION_JSON);
+            } catch (Exception e) {
+                log.error("Errore durante la serializzazione della risposta GET /cmd per {}", deviceId, e);
+                exchange.respond(CoAP.ResponseCode.INTERNAL_SERVER_ERROR, "Errore di serializzazione");
+            }
         }
 
-        private String extractCommand(CoapExchange exchange, int ct) throws Exception {
+        private Command extractCommand(CoapExchange exchange) throws Exception {
             byte[] payload = exchange.getRequestPayload();
-            if (payload == null) return "";
-
-            if (ct == MediaTypeRegistry.APPLICATION_JSON) {
-                JsonNode node = mapper.readTree(payload);
-                return node.hasNonNull("cmd") ? node.get("cmd").asText() : null;
-            } else {
-                return new String(payload);
+            if (payload == null || payload.length == 0) {
+                return null;
             }
+            return mapper.readValue(payload, Command.class);
         }
     }
 }
