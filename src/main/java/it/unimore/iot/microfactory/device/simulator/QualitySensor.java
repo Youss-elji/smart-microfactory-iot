@@ -1,4 +1,4 @@
-package it.unimore.iot.microfactory.device;
+package it.unimore.iot.microfactory.device.simulator;
 
 import it.unimore.iot.microfactory.model.QualitySensorData;
 import org.slf4j.Logger;
