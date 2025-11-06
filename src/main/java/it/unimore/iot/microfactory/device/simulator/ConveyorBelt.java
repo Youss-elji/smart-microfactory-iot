@@ -72,10 +72,12 @@ public class ConveyorBelt extends SimulatedDevice {
         String status = "OK";
         String responseMessage = "Command executed successfully";
 
+        String msgId = cmd != null ? cmd.getMsgId() : null;
+
         if (cmd == null || cmd.getType() == null) {
             status = "ERROR";
             responseMessage = "Invalid command payload";
-            publishAck("UNKNOWN", status, responseMessage);
+            publishAck("UNKNOWN", status, responseMessage, msgId);
             return;
         }
 
@@ -104,7 +106,7 @@ public class ConveyorBelt extends SimulatedDevice {
                 logger.warn(responseMessage);
         }
 
-        publishAck(cmd.getType(), status, responseMessage);
+        publishAck(cmd.getType(), status, responseMessage, msgId);
     }
 
     private void publishStatus() {
@@ -124,8 +126,8 @@ public class ConveyorBelt extends SimulatedDevice {
         mqttClientManager.publish(statusTopic, status); // QoS1, non-retained
     }
 
-    private void publishAck(String cmdType, String status, String message) {
-        Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis());
+    private void publishAck(String cmdType, String status, String message, String msgId) {
+        Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis(), msgId);
         mqttClientManager.publish(ackTopic, ack);
     }
 }

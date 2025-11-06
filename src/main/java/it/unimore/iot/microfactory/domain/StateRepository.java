@@ -149,7 +149,7 @@ public class StateRepository {
      * @param cell Cell ID
      * @param type Device type (robot, conveyor, quality)
      * @param id Device ID
-     * @param cmd Command to execute (e.g., RESET, START, STOP)
+     * @param command Command to execute (e.g., RESET, START, STOP)
      */
     public boolean publishCommand(String cell, String type, String id, Command command) {
         String cmdType = command != null ? command.getType() : null;

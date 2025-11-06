@@ -1,42 +1,48 @@
-version: '3.8'
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: microfactory-mosquitto
+    restart: unless-stopped
     ports:
       - "1883:1883"
-      - "9001:9001"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - mosquitto-data:/mosquitto/data
-      - mosquitto-logs:/mosquitto/log
-    restart: unless-stopped
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosq-data:/mosquitto/data
+      - mosq-logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/uptime' -C 1 -W 5 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     networks:
-      - microfactory-net
+      - microfactory
 
-  microfactory:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
+    image: smart-microfactory-iot_microfactory:latest
     container_name: microfactory-app
+    restart: unless-stopped
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
     ports:
       - "5683:5683/udp"
     environment:
       - MQTT_BROKER_URL=tcp://mosquitto:1883
+      - COAP_PORT=5683
       - AUTO_RESET_ON_ALARM=true
+      - JAVA_OPTS=-Xmx512m -Xms256m
     volumes:
       - ./logs:/app/logs
-    restart: unless-stopped
     networks:
-      - microfactory-net
+      - microfactory
 
 volumes:
-  mosquitto-data:
-  mosquitto-logs:
+  mosq-data:
+  mosq-logs:
 
 networks:
-  microfactory-net:
+  microfactory:
     driver: bridge

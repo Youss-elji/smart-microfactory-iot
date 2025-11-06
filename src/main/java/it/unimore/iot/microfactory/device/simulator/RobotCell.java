@@ -136,7 +136,7 @@ public class RobotCell extends SimulatedDevice {
                 message = "Unknown command type: " + cmd.getType();
                 logger.warn(message);
         }
-        publishAck(cmd.getType(), status, message);
+        publishAck(cmd.getType(), status, message, cmd.getMsgId());
     }
 
     private void publishStatus(double processingTime) {
@@ -149,8 +149,8 @@ public class RobotCell extends SimulatedDevice {
         mqttClientManager.publish(statusTopic, status);
     }
 
-    private void publishAck(String cmdType, String status, String message) {
-        Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis());
+    private void publishAck(String cmdType, String status, String message, String msgId) {
+        Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis(), msgId);
         mqttClientManager.publish(ackTopic, ack);
     }
 }
