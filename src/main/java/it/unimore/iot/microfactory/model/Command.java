@@ -17,12 +17,22 @@ public class Command {
      */
     private long ts;
 
+    /**
+     * Identificativo opzionale del messaggio, utilizzato per correlare comandi e ACK.
+     */
+    private String msgId;
+
     public Command() {
     }
 
     public Command(String type, long ts) {
+        this(type, ts, null);
+    }
+
+    public Command(String type, long ts, String msgId) {
         this.type = type;
         this.ts = ts;
+        this.msgId = msgId;
     }
 
     public String getType() {
@@ -39,5 +49,13 @@ public class Command {
 
     public void setTs(long ts) {
         this.ts = ts;
+    }
+
+    public String getMsgId() {
+        return msgId;
+    }
+
+    public void setMsgId(String msgId) {
+        this.msgId = msgId;
     }
 }

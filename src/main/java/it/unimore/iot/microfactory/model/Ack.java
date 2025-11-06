@@ -28,14 +28,24 @@ public class Ack {
      */
     private long ts;
 
+    /**
+     * Identificativo del messaggio correlato, restituito al client per consentire l'abbinamento.
+     */
+    private String msgId;
+
     public Ack() {
     }
 
     public Ack(String cmdType, String status, String message, long ts) {
+        this(cmdType, status, message, ts, null);
+    }
+
+    public Ack(String cmdType, String status, String message, long ts, String msgId) {
         this.cmdType = cmdType;
         this.status = status;
         this.message = message;
         this.ts = ts;
+        this.msgId = msgId;
     }
 
     public String getCmdType() {
@@ -68,5 +78,13 @@ public class Ack {
 
     public void setTs(long ts) {
         this.ts = ts;
+    }
+
+    public String getMsgId() {
+        return msgId;
+    }
+
+    public void setMsgId(String msgId) {
+        this.msgId = msgId;
     }
 }

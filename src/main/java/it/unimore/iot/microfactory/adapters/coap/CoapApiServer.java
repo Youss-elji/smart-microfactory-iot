@@ -406,7 +406,8 @@ public class CoapApiServer {
                 }
 
                 Ack ack = new Ack(command.getType(), "ACCEPTED",
-                        "Comando globale inoltrato al broker MQTT", System.currentTimeMillis());
+                        "Comando globale inoltrato al broker MQTT", System.currentTimeMillis(),
+                        command.getMsgId());
                 String body = mapper.writeValueAsString(ack);
                 exchange.respond(CoAP.ResponseCode.CHANGED, body, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
@@ -516,7 +517,8 @@ public class CoapApiServer {
                 }
 
                 Ack ack = new Ack(command.getType(), "ACCEPTED",
-                        "Comando inoltrato al broker MQTT", System.currentTimeMillis());
+                        "Comando inoltrato al broker MQTT", System.currentTimeMillis(),
+                        command.getMsgId());
                 String body = mapper.writeValueAsString(ack);
                 exchange.respond(CoAP.ResponseCode.CHANGED, body, MediaTypeRegistry.APPLICATION_JSON);
             } catch (Exception e) {
