@@ -15,30 +15,32 @@ import java.util.List;
 
 public class App {
 
+    // Punto di ingresso dell'applicazione che avvia tutti i componenti della microfabbrica simulata
     private static final Logger logger = LoggerFactory.getLogger(App.class);
 
+    // Avvia il simulatore inizializzando servizi di comunicazione, dispositivi e chiusura controllata
     public static void main(String[] args) {
         logger.info("Starting Smart Microfactory Simulation...");
 
         CommandPublisher commandPublisher = null;
         try {
-            // Get the shared state repository instance
+            // Recupera l'istanza condivisa del repository dello stato della microfabbrica
             StateRepository stateRepository = StateRepository.getInstance();
 
-            // Bridge CoAP commands towards MQTT
+            // Avvia il bridge che inoltra i comandi CoAP verso l'infrastruttura MQTT
             commandPublisher = new CommandPublisher();
             commandPublisher.start();
             stateRepository.registerCommandPublisher(commandPublisher);
 
-            // Create and start the Data Collector Manager
+            // Avvia il gestore che raccoglie i dati dai dispositivi MQTT
             DataCollectorManager dataCollectorManager = new DataCollectorManager();
             dataCollectorManager.start();
 
-            // Create and start the CoAP API Server
+            // Avvia il server CoAP che espone l'API per il controllo della microfabbrica
             CoapApiServer coapApiServer = new CoapApiServer(stateRepository);
             coapApiServer.start();
 
-            // Create device instances
+            // Istanzia i dispositivi simulati appartenenti alla stessa cella produttiva
             String cell = "cell-01";
             RobotCell robot = new RobotCell(cell, "robot", "robot-001");
             ConveyorBelt conveyor = new ConveyorBelt(cell, "conveyor", "conveyor-001");
@@ -50,37 +52,37 @@ public class App {
                     new Thread(sensor, "sensor-thread")
             );
 
-            // Start all device threads
+            // Avvia i thread associati ai dispositivi simulati
             deviceThreads.forEach(Thread::start);
 
             logger.info("All components have been started.");
 
-            // Add a shutdown hook to gracefully stop all components
+            // Registra una shutdown hook che arresta i componenti in modo ordinato
             CommandPublisher finalCommandPublisher = commandPublisher;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 logger.info("Shutdown hook triggered. Stopping all components...");
 
-                // Stop devices
+                // Arresta i dispositivi simulati
                 robot.shutdown();
                 conveyor.shutdown();
                 sensor.shutdown();
 
-                // Interrupt threads to unblock any waiting operations
+                // Interrompe i thread per sbloccare eventuali attese
                 deviceThreads.forEach(Thread::interrupt);
 
-                // Wait for all threads to terminate
+                // Attende la terminazione dei thread con un timeout di sicurezza
                 for (Thread t : deviceThreads) {
                     try {
-                        t.join(2000); // Wait max 2 seconds for each thread
+                        t.join(2000); // Attende al massimo 2 secondi per ciascun thread
                     } catch (InterruptedException e) {
                         logger.error("Interrupted while waiting for thread {} to finish.", t.getName(), e);
                     }
                 }
 
-                // Stop the CoAP server
+                // Arresta il server CoAP
                 coapApiServer.stop();
 
-                // Stop the MQTT manager
+                // Arresta il gestore dei dati MQTT
                 try {
                     dataCollectorManager.stop();
                 } catch (MqttException e) {

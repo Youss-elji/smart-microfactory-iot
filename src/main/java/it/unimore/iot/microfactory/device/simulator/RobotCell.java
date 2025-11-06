@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Random;
 
+// Simulatore di cella robotica che alterna stati operativi e gestisce comandi MQTT
 public class RobotCell extends SimulatedDevice {
 
     private static final Logger logger = LoggerFactory.getLogger(RobotCell.class);
@@ -26,6 +27,7 @@ public class RobotCell extends SimulatedDevice {
     private final String cmdTopic;
     private final String ackTopic;
 
+    // Costruttore che imposta i topic MQTT specifici della cella robotica
     public RobotCell(String cellId, String deviceType, String deviceId) {
         super(cellId, deviceType, deviceId);
         this.statusTopic = String.format("mf/%s/%s/%s/status", cellId, deviceType, deviceId);
@@ -33,6 +35,7 @@ public class RobotCell extends SimulatedDevice {
         this.ackTopic = String.format("mf/%s/%s/%s/ack", cellId, deviceType, deviceId);
     }
 
+    // Ciclo principale che pubblica telemetria e reagisce ai comandi in base allo stato corrente
     @Override
     public void start() throws InterruptedException {
         logger.info("RobotCell {} started.", deviceId);
@@ -50,10 +53,11 @@ public class RobotCell extends SimulatedDevice {
                     handleAlarmState();
                     break;
             }
-            Thread.sleep(100); // Main loop delay
+            Thread.sleep(100); // Piccolo ritardo per evitare un loop troppo aggressivo
         }
     }
 
+    // Gestisce lo stato di inattività simulando un tempo di attesa prima della produzione
     private void handleIdleState() throws InterruptedException {
         publishStatus(0);
         Thread.sleep(IDLE_DURATION_MS);
@@ -63,12 +67,13 @@ public class RobotCell extends SimulatedDevice {
         }
     }
 
+    // Simula l'elaborazione di un lotto decidendo durata e possibili allarmi casuali
     private void handleProcessingState() throws InterruptedException {
         double processingTime = random.nextInt(MAX_PROCESSING_DURATION_MS);
         publishStatus(processingTime / 1000.0);
         Thread.sleep((long) processingTime);
 
-        if (!running) return; // Exit if shutdown was called during sleep
+        if (!running) return; // Esce se lo shutdown è stato richiesto durante la pausa
 
         if (random.nextDouble() < ALARM_PROBABILITY) {
             this.currentState = RobotCellStatusEnum.ALARM;
@@ -79,14 +84,16 @@ public class RobotCell extends SimulatedDevice {
         }
     }
 
+    // Mantiene il robot in allarme finché non arriva un comando esterno di reset
     private void handleAlarmState() throws InterruptedException {
         publishStatus(0);
         logger.error("Robot {} is in ALARM state. Waiting for external RESET command...", deviceId);
         while (running && this.currentState == RobotCellStatusEnum.ALARM) {
-            Thread.sleep(1000); // Wait until state is changed by a command
+            Thread.sleep(1000); // Attende finché un comando esterno cambia lo stato
         }
     }
 
+    // Sottoscrive il topic dei comandi per ricevere i messaggi di controllo via MQTT
     private void subscribeToCommands() {
         try {
             mqttClientManager.getClient().subscribe(cmdTopic, 1, this::handleCommandMessage);
@@ -96,6 +103,7 @@ public class RobotCell extends SimulatedDevice {
         }
     }
 
+    // Decodifica il comando ricevuto dal topic MQTT e lo inoltra alla logica di gestione
     private void handleCommandMessage(String topic, MqttMessage message) {
         try {
             Command cmd = objectMapper.readValue(message.getPayload(), Command.class);
@@ -106,6 +114,7 @@ public class RobotCell extends SimulatedDevice {
         }
     }
 
+    // Applica i comandi supportati aggiornando lo stato del robot e inviando un ACK
     private void handleCommand(Command cmd) {
         String status = "OK";
         String message = "Command executed successfully";
@@ -139,6 +148,7 @@ public class RobotCell extends SimulatedDevice {
         publishAck(cmd.getType(), status, message, cmd.getMsgId());
     }
 
+    // Pubblica sul topic di stato i dati della cella robotica simulata
     private void publishStatus(double processingTime) {
         RobotCellStatus status = new RobotCellStatus(
                 this.deviceId,
@@ -149,6 +159,7 @@ public class RobotCell extends SimulatedDevice {
         mqttClientManager.publish(statusTopic, status);
     }
 
+    // Invia un messaggio di riscontro per informare il chiamante sull'esito del comando
     private void publishAck(String cmdType, String status, String message, String msgId) {
         Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis(), msgId);
         mqttClientManager.publish(ackTopic, ack);

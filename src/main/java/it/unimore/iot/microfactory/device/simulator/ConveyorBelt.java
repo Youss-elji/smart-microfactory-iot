@@ -11,13 +11,14 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Random;
 
+// Simulatore del nastro trasportatore che invia telemetria periodica e riceve comandi MQTT
 public class ConveyorBelt extends SimulatedDevice {
 
     private static final Logger logger = LoggerFactory.getLogger(ConveyorBelt.class);
 
     // Parametri di simulazione
-    private static final double BASE_SPEED = 10.0;          // items/min
-    private static final double SPEED_VARIATION = 2.0;      // ±2
+    private static final double BASE_SPEED = 10.0;          // pezzi al minuto
+    private static final double SPEED_VARIATION = 2.0;      // variazione massima ±2
     private static final int TELEMETRY_PUBLISH_INTERVAL_MS = 5000;
 
     private final Random random = new Random();
@@ -31,6 +32,7 @@ public class ConveyorBelt extends SimulatedDevice {
     private final String cmdTopic;
     private final String ackTopic;
 
+    // Costruttore che inizializza i topic di stato, comando e ACK del nastro
     public ConveyorBelt(String cellId, String deviceType, String deviceId) {
         super(cellId, deviceType, deviceId);
         this.statusTopic = String.format("mf/%s/%s/%s/status", cellId, deviceType, deviceId);
@@ -38,6 +40,7 @@ public class ConveyorBelt extends SimulatedDevice {
         this.ackTopic    = String.format("mf/%s/%s/%s/ack",    cellId, deviceType, deviceId);
     }
 
+    // Ciclo di simulazione che pubblica la velocità attuale a intervalli regolari
     @Override
     public void start() throws InterruptedException {
         logger.info("ConveyorBelt {} started.", deviceId);
@@ -49,6 +52,7 @@ public class ConveyorBelt extends SimulatedDevice {
         }
     }
 
+    // Sottoscrive il topic dei comandi per aggiornare lo stato ON/OFF del dispositivo
     private void subscribeToCommands() {
         try {
             mqttClientManager.getClient().subscribe(cmdTopic, 1, this::handleCommandMessage);
@@ -58,6 +62,7 @@ public class ConveyorBelt extends SimulatedDevice {
         }
     }
 
+    // Converte il payload MQTT in un oggetto Command e lo inoltra alla logica specifica
     private void handleCommandMessage(String topic, MqttMessage message) {
         try {
             Command cmd = objectMapper.readValue(message.getPayload(), Command.class);
@@ -68,6 +73,7 @@ public class ConveyorBelt extends SimulatedDevice {
         }
     }
 
+    // Gestisce i comandi supportati modificando lo stato attivo e rispondendo con un ACK
     private void handleCommand(Command cmd) {
         String status = "OK";
         String responseMessage = "Command executed successfully";
@@ -109,6 +115,7 @@ public class ConveyorBelt extends SimulatedDevice {
         publishAck(cmd.getType(), status, responseMessage, msgId);
     }
 
+    // Pubblica lo stato corrente del nastro includendo una velocità calcolata casualmente
     private void publishStatus() {
         double currentSpeed = 0.0;
         if (active) {
@@ -123,9 +130,10 @@ public class ConveyorBelt extends SimulatedDevice {
                 currentSpeed
         );
 
-        mqttClientManager.publish(statusTopic, status); // QoS1, non-retained
+        mqttClientManager.publish(statusTopic, status); // QoS1, non mantenuto
     }
 
+    // Invia un messaggio di riscontro con l'esito dell'ultimo comando ricevuto
     private void publishAck(String cmdType, String status, String message, String msgId) {
         Ack ack = new Ack(cmdType, status, message, System.currentTimeMillis(), msgId);
         mqttClientManager.publish(ackTopic, ack);

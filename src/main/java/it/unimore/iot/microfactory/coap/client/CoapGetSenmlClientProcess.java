@@ -11,10 +11,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
+// Client CLI che esegue una richiesta GET SenML verso un endpoint CoAP e mostra la risposta
 public class CoapGetSenmlClientProcess {
 
     private static final Logger logger = LoggerFactory.getLogger(CoapGetSenmlClientProcess.class);
 
+    // Esegue la richiesta GET accettando payload SenML+JSON dal server indicato
     public static void main(String[] args) {
         if (args.length != 1) {
             System.err.println("Usage: CoapGetSenmlClientProcess [URI]");

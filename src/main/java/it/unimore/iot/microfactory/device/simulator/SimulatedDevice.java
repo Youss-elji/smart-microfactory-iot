@@ -6,6 +6,7 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+// Classe base per i dispositivi simulati che gestisce thread, connessione MQTT e ciclo di vita
 public abstract class SimulatedDevice implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(SimulatedDevice.class);
@@ -17,6 +18,7 @@ public abstract class SimulatedDevice implements Runnable {
     protected final ObjectMapper objectMapper = new ObjectMapper();
     protected volatile boolean running = true;
 
+    // Costruttore condiviso che inizializza l'identità del dispositivo e il relativo client MQTT
     protected SimulatedDevice(String cellId, String deviceType, String deviceId) {
         this.cellId = cellId;
         this.deviceType = deviceType;
@@ -29,6 +31,7 @@ public abstract class SimulatedDevice implements Runnable {
         }
     }
 
+    // Metodo eseguito dal thread che gestisce connessione MQTT e avvio della logica specifica
     @Override
     public void run() {
         try {
@@ -51,6 +54,7 @@ public abstract class SimulatedDevice implements Runnable {
         }
     }
 
+    // Richiede l'arresto della simulazione interrompendo il thread e uscendo dal loop principale
     public void shutdown() {
         this.running = false;
         Thread.currentThread().interrupt();  // garantisce che il thread si svegli subito

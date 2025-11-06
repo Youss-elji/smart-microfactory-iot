@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+// Gestore che riceve la telemetria MQTT dai dispositivi e aggiorna il repository dello stato
 public class DataCollectorManager {
 
     private static final Logger logger = LoggerFactory.getLogger(DataCollectorManager.class);
@@ -38,15 +39,17 @@ public class DataCollectorManager {
     private final StateRepository stateRepository = StateRepository.getInstance();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-    // abilita/disabilita l'auto-reset del robot in ALARM (default: true)
+    // Abilita o disabilita l'invio automatico del comando RESET quando un robot entra in ALARM
     private final boolean autoResetOnAlarm =
             Boolean.parseBoolean(Optional.ofNullable(System.getenv("AUTO_RESET_ON_ALARM")).orElse("true"));
 
+    // Costruttore che inizializza il client MQTT leggendo le configurazioni dall'ambiente
     public DataCollectorManager() throws MqttException {
         this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL")).orElse("tcp://localhost:1883");
         this.mqttClient = new MqttClient(brokerUrl, CLIENT_ID, new MemoryPersistence());
     }
 
+    // Stabilisce la connessione al broker MQTT e registra il callback per elaborare la telemetria
     public void start() throws MqttException {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setAutomaticReconnect(true);
@@ -85,7 +88,7 @@ public class DataCollectorManager {
 
             @Override
             public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                // not used
+                // Metodo richiesto dall'interfaccia ma non utilizzato in questo scenario
             }
         });
 
@@ -96,6 +99,7 @@ public class DataCollectorManager {
         scheduler.scheduleAtFixedRate(this::printStatistics, 10, 10, TimeUnit.SECONDS);
     }
 
+    // Sottoscrive il client MQTT al topic wildcard che raccoglie gli stati dei dispositivi
     private void subscribeToTopics() throws MqttException {
         mqttClient.subscribe(TELEMETRY_TOPIC_WILDCARD, 1);
         logger.info("Subscribed to topic: {}", TELEMETRY_TOPIC_WILDCARD);
@@ -103,6 +107,7 @@ public class DataCollectorManager {
 
     private record TopicParts(String cell, String type, String id) {}
 
+    // Analizza il topic ricevuto per estrarre cella, tipo e identificativo del dispositivo
     private Optional<TopicParts> parseTopic(String topic) {
         String[] p = topic.split("/");
         if (p.length == 5 && "mf".equals(p[0]) && "status".equals(p[4])) {
@@ -112,6 +117,7 @@ public class DataCollectorManager {
         return Optional.empty();
     }
 
+    // Decodifica la telemetria ricevuta, aggiorna il repository e gestisce eventuali allarmi dei robot
     private void processMessage(String topic, MqttMessage message) throws IOException {
         logger.debug("Message arrived from topic '{}'", topic);
 
@@ -141,6 +147,7 @@ public class DataCollectorManager {
         });
     }
 
+    // Invia un comando RESET al robot specificato quando è abilitato l'auto ripristino
     private void sendResetCommand(String cellId, String deviceId) {
         try {
             String cmdTopic = String.format("mf/%s/robot/%s/cmd", cellId, deviceId);
@@ -155,11 +162,12 @@ public class DataCollectorManager {
         }
     }
 
+    // Stampa periodicamente un log utile a calcolare KPI o verificare la connettività
     private void printStatistics() {
-        // placeholder: qui puoi calcolare KPI a partire dallo StateRepository
-        logger.info("Periodic check... (you can compute KPIs from StateRepository here)");
+        logger.info("Controllo periodico: calcolo KPI o verifiche possono essere aggiunti qui.");
     }
 
+    // Arresta le attività del gestore chiudendo il thread scheduler e la connessione MQTT
     public void stop() throws MqttException {
         scheduler.shutdownNow();
         if (mqttClient.isConnected()) {

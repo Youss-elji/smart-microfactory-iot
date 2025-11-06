@@ -14,8 +14,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Publishes commands received via the CoAP API onto the MQTT broker so that
- * simulated devices can consume them.
+ * Pubblica sul broker MQTT i comandi ricevuti via API CoAP rendendoli disponibili
+ * ai dispositivi simulati della microfabbrica.
  */
 public class CommandPublisher implements AutoCloseable {
 
@@ -28,6 +28,7 @@ public class CommandPublisher implements AutoCloseable {
     private final String brokerUrl;
     private boolean connected;
 
+    // Costruttore che crea il client MQTT utilizzando la configurazione dell'ambiente
     public CommandPublisher() throws MqttException {
         this.brokerUrl = Optional.ofNullable(System.getenv("MQTT_BROKER_URL"))
                 .orElse("tcp://localhost:1883");
@@ -36,7 +37,7 @@ public class CommandPublisher implements AutoCloseable {
     }
 
     /**
-     * Connects the internal MQTT client if not already connected.
+     * Stabilisce la connessione del client MQTT interno se non è già attiva.
      */
     public synchronized void start() throws MqttException {
         if (connected) {
@@ -58,7 +59,7 @@ public class CommandPublisher implements AutoCloseable {
     }
 
     /**
-     * Publishes a command addressed to a specific device.
+     * Pubblica un comando indirizzato a un dispositivo specifico della cella.
      */
     public synchronized void publishDeviceCommand(String cellId, String deviceType, String deviceId, Command command)
             throws MqttException {
@@ -68,13 +69,14 @@ public class CommandPublisher implements AutoCloseable {
     }
 
     /**
-     * Publishes a broadcast command intended for every device in the factory.
+     * Pubblica un comando broadcast destinato a tutti i dispositivi della fabbrica.
      */
     public synchronized void publishGlobalCommand(Command command) throws MqttException {
         ensureConnected();
         publish(GLOBAL_COMMAND_TOPIC, command);
     }
 
+    // Serializza e invia il comando sul topic scelto gestendo eventuali errori di pubblicazione
     private void publish(String topic, Command command) throws MqttException {
         try {
             byte[] payload = mapper.writeValueAsBytes(command);
@@ -88,6 +90,7 @@ public class CommandPublisher implements AutoCloseable {
         }
     }
 
+    // Garantisce che la connessione MQTT sia attiva prima di inviare il comando richiesto
     private void ensureConnected() throws MqttException {
         if (!connected || !client.isConnected()) {
             start();

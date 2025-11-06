@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Colors for output
+# Colori per l'output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -12,7 +12,7 @@ echo -e "${GREEN}  Smart Microfactory - Deployment${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
-# 1. Build
+# 1. Compilazione del progetto
 echo -e "${YELLOW}[1/5] Building project...${NC}"
 mvn clean package -DskipTests
 if [ $? -ne 0 ]; then
@@ -22,13 +22,13 @@ fi
 echo -e "${GREEN}Build successful!${NC}"
 echo ""
 
-# 2. Stop old instance
+# 2. Arresto di un'eventuale istanza precedente
 echo -e "${YELLOW}[2/5] Stopping old instance...${NC}"
 pkill -f "smart-microfactory" || echo "No previous instance found"
 sleep 2
 echo ""
 
-# 3. Backup old logs
+# 3. Backup dei log precedenti
 echo -e "${YELLOW}[3/5] Backing up logs...${NC}"
 if [ -f "app.log" ]; then
     timestamp=$(date +%Y%m%d_%H%M%S)
@@ -37,7 +37,7 @@ if [ -f "app.log" ]; then
 fi
 echo ""
 
-# 4. Start new instance
+# 4. Avvio della nuova istanza
 echo -e "${YELLOW}[4/5] Starting new instance...${NC}"
 JAR=$(find target -name "*-shaded.jar" -type f | head -1)
 nohup java -jar "$JAR" > app.log 2>&1 &
@@ -46,11 +46,11 @@ echo "Started with PID: $PID"
 echo $PID > microfactory.pid
 echo ""
 
-# 5. Health check
+# 5. Controllo sullo stato di avvio
 echo -e "${YELLOW}[5/5] Waiting for server to start...${NC}"
 sleep 10
 
-# Simple health check (check if process is running)
+# Verifica semplificata: controlla che il processo sia attivo
 if ps -p $PID > /dev/null; then
     echo -e "${GREEN}Server is running!${NC}"
     echo ""
