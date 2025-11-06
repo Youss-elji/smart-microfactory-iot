@@ -4,7 +4,9 @@ import org.eclipse.californium.core.CoapClient;
 import org.eclipse.californium.core.CoapResponse;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 
+// Piccolo probe che verifica la raggiungibilità di un endpoint CoAP stampando codice e contenuto
 public class CoapHealthProbe {
+  // Esegue una richiesta GET con timeout fisso e codici di uscita in caso di errore
   public static void main(String[] args) {
     String uri = "coap://127.0.0.1:5683/.well-known/core";
     if (args.length > 0) uri = args[0];

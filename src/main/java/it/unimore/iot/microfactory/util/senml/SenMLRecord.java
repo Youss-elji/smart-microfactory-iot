@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
+// Modello di singolo record SenML che consente campi opzionali a seconda del tipo di misura
 public class SenMLRecord {
 
     @JsonProperty("bn")
@@ -24,6 +25,7 @@ public class SenMLRecord {
     @JsonProperty("t")
     private long time;
 
+    // Costruttore vuoto richiesto dalla serializzazione Jackson
     public SenMLRecord() {
     }
 

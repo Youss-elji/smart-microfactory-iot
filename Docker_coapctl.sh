@@ -101,7 +101,7 @@ cmd_status() {
 }
 
 post_cmd() {
-  local what="$1"               # START | STOP | RESET
+  local what="$1"               # Valori ammessi: START | STOP | RESET
   local payload="{\"cmd\":\"$what\"}"
   echo "• POST $ROBOT_PATH/cmd  payload=$payload"
   printf '%s' "$payload" \

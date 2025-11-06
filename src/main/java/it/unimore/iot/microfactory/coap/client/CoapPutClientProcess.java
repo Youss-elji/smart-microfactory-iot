@@ -11,10 +11,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
+// Client di prova che invia una richiesta PUT con payload testuale a un endpoint CoAP
 public class CoapPutClientProcess {
 
     private static final Logger logger = LoggerFactory.getLogger(CoapPutClientProcess.class);
 
+    // Esegue la richiesta PUT includendo un payload opzionale fornito da linea di comando
     public static void main(String[] args) {
         if (args.length < 1) {
             System.err.println("Usage: CoapPutClientProcess [URI] [Payload]");

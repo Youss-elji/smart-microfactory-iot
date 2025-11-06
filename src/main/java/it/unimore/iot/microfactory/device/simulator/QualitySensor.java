@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Random;
 
+// Sensore di qualità simulato che analizza pezzi e pubblica statistiche di conformità
 public class QualitySensor extends SimulatedDevice {
 
     private static final Logger logger = LoggerFactory.getLogger(QualitySensor.class);
@@ -20,11 +21,13 @@ public class QualitySensor extends SimulatedDevice {
 
     private final String statusTopic;
 
+    // Costruttore che definisce il topic di telemetria del sensore di qualità
     public QualitySensor(String cellId, String deviceType, String deviceId) {
         super(cellId, deviceType, deviceId);
         this.statusTopic = String.format("mf/%s/%s/%s/status", cellId, deviceType, deviceId);
     }
 
+    // Loop principale che scandisce nuovi pezzi a intervalli casualizzati e pubblica i risultati
     @Override
     public void start() throws InterruptedException {
         logger.info("QualitySensor {} started.", deviceId);
@@ -38,6 +41,7 @@ public class QualitySensor extends SimulatedDevice {
         }
     }
 
+    // Simula il controllo qualità di un singolo pezzo aggiornando i conteggi aggregati
     private void scanNewItem() {
         this.totalProcessed++;
         if (random.nextDouble() < GOOD_QUALITY_PROBABILITY) {
@@ -49,6 +53,7 @@ public class QualitySensor extends SimulatedDevice {
         }
     }
 
+    // Pubblica lo stato cumulativo del sensore sul topic dedicato
     private void publishStatus() {
         QualitySensorData data = new QualitySensorData(
                 this.deviceId,

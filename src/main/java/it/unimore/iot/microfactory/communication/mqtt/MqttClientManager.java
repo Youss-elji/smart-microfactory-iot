@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+// Gestisce la connessione MQTT lato dispositivo simulato fornendo publish e messaggi informativi
 public class MqttClientManager {
 
     private static final Logger logger = LoggerFactory.getLogger(MqttClientManager.class);
@@ -28,6 +29,7 @@ public class MqttClientManager {
     private final IMqttClient mqttClient;
     private final ObjectMapper objectMapper;
 
+    // Costruttore che prepara il client MQTT e definisce identificativi per topic e clientId
     public MqttClientManager(String cellId, String deviceType, String deviceId) throws MqttException {
         this.cellId = cellId;
         this.deviceType = deviceType;
@@ -43,6 +45,7 @@ public class MqttClientManager {
         this.objectMapper = new ObjectMapper();
     }
 
+    // Apre la connessione al broker configurando credenziali, LWT e messaggio informativo retained
     public void connect() throws MqttException {
         if (!this.mqttClient.isConnected()) {
             MqttConnectOptions options = new MqttConnectOptions();
@@ -56,7 +59,7 @@ public class MqttClientManager {
                     .map(String::toCharArray)
                     .ifPresent(options::setPassword);
 
-            // LWT (Last Will & Testament) retained su /lwt
+            // Configura il Last Will & Testament (LWT) retained sul topic /lwt
             String lwtTopic = String.format("mf/%s/%s/%s/lwt", cellId, deviceType, deviceId);
             options.setWill(lwtTopic, "offline".getBytes(), 1, true);
 
@@ -68,6 +71,7 @@ public class MqttClientManager {
         }
     }
 
+    // Pubblica un messaggio retained che descrive lo stato e le caratteristiche del dispositivo
     private void publishInfoMessage() {
         Map<String, Object> info = Map.of(
                 "cellId", cellId,
@@ -82,6 +86,7 @@ public class MqttClientManager {
         logger.info("Published retained info to {}", infoTopic);
     }
 
+    // Chiude la connessione MQTT quando il dispositivo si arresta
     public void disconnect() throws MqttException {
         if (this.mqttClient.isConnected()) {
             this.mqttClient.disconnect();
@@ -89,6 +94,7 @@ public class MqttClientManager {
         }
     }
 
+    // Pubblica un messaggio QoS1 non retained sul topic specificato serializzando l'oggetto in JSON
     public <T> void publish(String topic, T payload) {
         try {
             if (this.mqttClient.isConnected()) {
@@ -108,6 +114,7 @@ public class MqttClientManager {
         }
     }
 
+    // Pubblica un messaggio QoS1 retained per mantenere l'ultimo valore disponibile ai subscriber
     public <T> void publishRetained(String topic, T payload) {
         try {
             if (this.mqttClient.isConnected()) {
@@ -127,6 +134,7 @@ public class MqttClientManager {
         }
     }
 
+    // Serializza un payload generico in JSON, restituendo i byte da inviare su MQTT
     private <T> Optional<byte[]> serializePayload(T payload) {
         try {
             return Optional.of(objectMapper.writeValueAsBytes(payload));
@@ -136,6 +144,7 @@ public class MqttClientManager {
         }
     }
 
+    // Espone il client MQTT sottostante per eventuali operazioni avanzate
     public IMqttClient getClient() {
         return this.mqttClient;
     }

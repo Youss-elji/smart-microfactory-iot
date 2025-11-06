@@ -10,10 +10,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
+// Esempio di client che invia una richiesta POST generica verso un endpoint CoAP
 public class CoapPostClientProcess {
 
     private static final Logger logger = LoggerFactory.getLogger(CoapPostClientProcess.class);
 
+    // Invia un POST senza payload e stampa il codice di risposta ricevuto
     public static void main(String[] args) {
         if (args.length != 1) {
             System.err.println("Usage: CoapPostClientProcess [URI]");
@@ -26,7 +28,7 @@ public class CoapPostClientProcess {
         try {
             logger.info("Sending POST request to: {}", uri);
             Request request = new Request(CoAP.Code.POST);
-            // In a real scenario, you might add a payload, e.g., request.setPayload(...)
+            // In uno scenario reale si può impostare un payload con request.setPayload(...)
 
             CoapResponse coapResponse = coapClient.advanced(request);
 

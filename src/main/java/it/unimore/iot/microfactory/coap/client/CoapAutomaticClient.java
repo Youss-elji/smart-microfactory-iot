@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Set;
 
+// Client dimostrativo che scopre risorse CoAP e attiva automaticamente un attuatore in base a un sensore
 public class CoapAutomaticClient {
 
     private static final Logger logger = LoggerFactory.getLogger(CoapAutomaticClient.class);
@@ -25,7 +26,7 @@ public class CoapAutomaticClient {
 
     public static void main(String[] args) {
         try {
-            // Discover resources
+            // Esegue la discovery delle risorse esposte dal server CoAP
             String targetUri = String.format("%s/.well-known/core", COAP_SERVER_URI);
             CoapClient discoveryClient = new CoapClient(targetUri);
             CoapResponse response = discoveryClient.get(ContentFormat.APPLICATION_LINK_FORMAT);
@@ -35,11 +36,11 @@ public class CoapAutomaticClient {
                 return;
             }
 
-            logger.info("Discovery successful. Found resources:");
+            logger.info("Discovery completata. Risorse disponibili:");
             Set<WebLink> links = LinkFormat.parse(response.getResponseText());
             links.forEach(link -> logger.info("-> {}", link.getURI()));
 
-            // Find sensor and actuator
+            // Ricerca delle risorse di sensore e attuatore nella lista scoperta
             String sensorUri = findResourceUri(links, SENSOR_RT);
             String actuatorUri = findResourceUri(links, ACTUATOR_RT);
 
@@ -48,10 +49,10 @@ public class CoapAutomaticClient {
                 return;
             }
 
-            logger.info("Found capsule sensor at: {}", sensorUri);
-            logger.info("Found task actuator at: {}", actuatorUri);
+            logger.info("Sensore capsula individuato: {}", sensorUri);
+            logger.info("Attuatore task individuato: {}", actuatorUri);
 
-            // Get sensor state in SenML+JSON
+            // Recupera lo stato del sensore in formato SenML+JSON
             CoapClient sensorClient = new CoapClient(COAP_SERVER_URI + sensorUri);
             Request getRequest = new Request(CoAP.Code.GET);
             getRequest.getOptions().setAccept(ContentFormat.APPLICATION_SENML_JSON);
@@ -59,12 +60,12 @@ public class CoapAutomaticClient {
 
             if (sensorResponse != null && sensorResponse.isSuccess()) {
                 logger.info("Sensor state (SenML): {}", sensorResponse.getResponseText());
-                // Simple logic: if sensor reports something (e.g., capsule present), activate actuator
-                // A real implementation would parse the SenML response.
+                // Logica semplificata: se il sensore segnala presenza capsula, attiva l'attuatore
+                // In produzione si dovrebbe analizzare il payload SenML anziché cercare stringhe
                 if (sensorResponse.getResponseText().contains("\"vb\":true") || sensorResponse.getResponseText().contains("\"v\":1")) {
-                    logger.info("Capsule detected! Triggering actuator...");
+                    logger.info("Capsula rilevata! Avvio dell'attuatore...");
 
-                    // Activate actuator
+                    // Attiva l'attuatore inviando un comando POST testuale
                     CoapClient actuatorClient = new CoapClient(COAP_SERVER_URI + actuatorUri);
                     CoapResponse actuatorResponse = actuatorClient.post("start", MediaTypeRegistry.TEXT_PLAIN);
 
@@ -75,7 +76,7 @@ public class CoapAutomaticClient {
                     }
                     actuatorClient.shutdown();
                 } else {
-                    logger.info("Condition not met, not triggering actuator.");
+                    logger.info("Condizione non soddisfatta, attuatore non attivato.");
                 }
             } else {
                 logger.error("Failed to get sensor state. Response: {}", sensorResponse);
@@ -87,6 +88,7 @@ public class CoapAutomaticClient {
         }
     }
 
+    // Ricerca l'URI della risorsa con il resource type richiesto fra quelli scoperti
     private static String findResourceUri(Set<WebLink> links, String resourceType) {
         return links.stream()
                 .filter(link -> link.getAttributes().getResourceTypes().contains(resourceType))

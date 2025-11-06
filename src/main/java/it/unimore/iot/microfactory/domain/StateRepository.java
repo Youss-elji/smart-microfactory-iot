@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+// Repository centralizzato che mantiene lo stato dei dispositivi e inoltra i comandi MQTT
 public class StateRepository {
 
     private static final Logger logger = LoggerFactory.getLogger(StateRepository.class);
@@ -22,12 +23,14 @@ public class StateRepository {
     private final ObjectMapper objectMapper;
     private volatile CommandPublisher commandPublisher;
 
+    // Costruttore privato che inizializza le strutture dati concorrenti per stati e listener
     private StateRepository() {
         this.states = new ConcurrentHashMap<>();
         this.listeners = new ConcurrentHashMap<>();
         this.objectMapper = new ObjectMapper();
     }
 
+    // Ritorna l'unica istanza condivisa del repository creando l'oggetto alla prima richiesta
     public static synchronized StateRepository getInstance() {
         if (instance == null) {
             instance = new StateRepository();
@@ -35,11 +38,13 @@ public class StateRepository {
         return instance;
     }
 
+    // Registra il publisher MQTT che verrà utilizzato per inoltrare i comandi verso il broker
     public void registerCommandPublisher(CommandPublisher commandPublisher) {
         this.commandPublisher = commandPublisher;
         logger.info("CommandPublisher registered in StateRepository");
     }
 
+    // Inserisce o aggiorna lo stato di un dispositivo identificato da cella, tipo e id
     public void upsert(String cell, String type, String id, Object stateObj) {
         String key = buildKey(cell, type, id);
         this.states.put(key, stateObj);
@@ -47,11 +52,13 @@ public class StateRepository {
         notifyListeners(key, stateObj);
     }
 
+    // Recupera lo stato corrente di un dispositivo se presente nel repository
     public Optional<Object> get(String cell, String type, String id) {
         String key = buildKey(cell, type, id);
         return Optional.ofNullable(this.states.get(key));
     }
 
+    // Restituisce tutti gli stati relativi a una cella produttiva specifica
     public Map<String, Object> listByCell(String cell) {
         Map<String, Object> cellStates = new HashMap<>();
         this.states.forEach((key, value) -> {
@@ -62,12 +69,14 @@ public class StateRepository {
         return cellStates;
     }
 
+    // Associa un listener agli aggiornamenti di stato di un singolo dispositivo
     public void addListener(String cell, String type, String id, Consumer<Object> listener) {
         String key = buildKey(cell, type, id);
         this.listeners.computeIfAbsent(key, k -> new ArrayList<>()).add(listener);
         logger.info("Listener added for key '{}'", key);
     }
 
+    // Notifica tutti i listener registrati per una determinata chiave di stato
     private void notifyListeners(String key, Object stateObj) {
         List<Consumer<Object>> keyListeners = this.listeners.get(key);
         if (keyListeners != null && !keyListeners.isEmpty()) {
@@ -82,12 +91,14 @@ public class StateRepository {
         }
     }
 
+    // Genera la chiave unica che rappresenta un dispositivo all'interno del repository
     private String buildKey(String cell, String type, String id) {
         return String.format("%s/%s/%s", cell, type, id);
     }
 
-    // --- Stub methods for CoAP API ---
+    // --- Metodi di supporto per l'esposizione tramite API CoAP ---
 
+    // Restituisce in formato JSON l'elenco dei dispositivi registrati per una cella
     public String listDevicesJson(String cell) {
         try {
             Map<String, Object> cellDevices = listByCell(cell);
@@ -107,6 +118,7 @@ public class StateRepository {
         }
     }
 
+    // Produce la rappresentazione JSON dello stato di un singolo dispositivo se disponibile
     public String getStateJson(String cell, String type, String id) {
         try {
             Optional<Object> state = get(cell, type, id);
@@ -123,8 +135,8 @@ public class StateRepository {
     }
 
     /**
-     * Publish a global command to all devices in the factory
-     * @param cmd Command to execute (e.g., RESET, START, STOP, EMERGENCY)
+     * Pubblica un comando globale destinato a tutti i dispositivi della fabbrica.
+     * @param command Oggetto comando contenente tipo e timestamp del messaggio.
      */
     public boolean publishGlobalCommand(Command command) {
         String type = command != null ? command.getType() : null;
@@ -145,11 +157,11 @@ public class StateRepository {
     }
 
     /**
-     * Publish a command to a specific device
-     * @param cell Cell ID
-     * @param type Device type (robot, conveyor, quality)
-     * @param id Device ID
-     * @param command Command to execute (e.g., RESET, START, STOP)
+     * Pubblica un comando destinato a un singolo dispositivo identificato da cella, tipo e id.
+     * @param cell Identificativo della cella industriale destinataria.
+     * @param type Tipo di dispositivo (es. robot, conveyor, quality).
+     * @param id Identificativo univoco del dispositivo nella cella.
+     * @param command Comando da eseguire con tipo e timestamp.
      */
     public boolean publishCommand(String cell, String type, String id, Command command) {
         String cmdType = command != null ? command.getType() : null;
@@ -170,6 +182,7 @@ public class StateRepository {
         }
     }
 
+    // Verifica che il publisher MQTT sia stato registrato prima di inviare nuovi comandi
     private boolean ensurePublisherAvailable() {
         if (commandPublisher == null) {
             logger.error("CommandPublisher not registered. Cannot forward commands to MQTT broker.");
@@ -178,6 +191,7 @@ public class StateRepository {
         return true;
     }
 
+    // Normalizza il comando assicurando maiuscole e timestamp valorizzato
     private Command normalizeCommand(Command command) {
         Command result = command != null ? command : new Command();
         if (result.getType() != null) {
