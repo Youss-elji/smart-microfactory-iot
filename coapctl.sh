@@ -64,102 +64,149 @@ gen_msgid() {
   if command -v uuidgen >/dev/null 2>&1; then uuidgen; else echo "m$(date +%s%3N)-$RANDOM"; fi
 }
 
-# --- Sottoscrizione anticipata al topic ACK per evitare race ---
-# Crea una FIFO, parte mosquitto_sub in background e ci scrive dentro.
+# Variabili globali per il subscriber
 SUB_PID=""
 SUB_FIFO=""
-start_ack_sub() {
-  SUB_FIFO="$(mktemp -u)"
-  mkfifo "$SUB_FIFO"
-  # -q : quiet banner; niente -v (non ci serve il topic)
-  # NB: niente -W/-C qui: gestiamo noi il timeout.
-  "$MQTT_SUB" -h "$MQTT_HOST" -t "$ACK_TOPIC" > "$SUB_FIFO" 2>/dev/null &
-  SUB_PID=$!
-  dbg "Subscriber avviato pid=$SUB_PID fifo=$SUB_FIFO"
-  # piccolo sleep per assicurare la sottoscrizione prima del POST
-  sleep 0.15
-}
+SUB_READY_FLAG=""
 
-stop_ack_sub() {
+# Cleanup function da chiamare sempre
+cleanup() {
   if [ -n "${SUB_PID:-}" ] && kill -0 "$SUB_PID" 2>/dev/null; then
     kill "$SUB_PID" 2>/dev/null || true
     wait "$SUB_PID" 2>/dev/null || true
   fi
-  if [ -n "${SUB_FIFO:-}" ] && [ -p "$SUB_FIFO" ]; then rm -f "$SUB_FIFO"; fi
-  SUB_PID=""; SUB_FIFO=""
+  [ -n "${SUB_FIFO:-}" ] && [ -p "$SUB_FIFO" ] && rm -f "$SUB_FIFO"
+  [ -n "${SUB_READY_FLAG:-}" ] && [ -f "$SUB_READY_FLAG" ] && rm -f "$SUB_READY_FLAG"
 }
 
-# Legge dalla FIFO fino a timeout e restituisce il JSON dell'ACK se matcha per msgId o ts-window
+trap cleanup EXIT INT TERM
+
+# Avvia subscriber con meccanismo di sincronizzazione
+start_ack_sub() {
+  SUB_FIFO="$(mktemp -u)"
+  SUB_READY_FLAG="$(mktemp -u)"
+  mkfifo "$SUB_FIFO"
+
+  # Avvia mosquitto_sub che scrive un marker quando è connesso
+  (
+    # Usa -R per NON ricevere messaggi retained (vecchi)
+    "$MQTT_SUB" -h "$MQTT_HOST" -t "$ACK_TOPIC" -R 2>/dev/null | while IFS= read -r line; do
+      # Segnala che siamo pronti al primo messaggio ricevuto (o subito)
+      [ ! -f "$SUB_READY_FLAG" ] && touch "$SUB_READY_FLAG"
+      echo "$line"
+    done > "$SUB_FIFO"
+  ) &
+  SUB_PID=$!
+
+  dbg "Subscriber avviato pid=$SUB_PID fifo=$SUB_FIFO"
+
+  # Aspetta che il subscriber sia pronto (max 2 secondi)
+  local wait_count=0
+  while [ ! -f "$SUB_READY_FLAG" ] && [ $wait_count -lt 20 ]; do
+    sleep 0.1
+    wait_count=$((wait_count + 1))
+    # Dopo 1 secondo, assumiamo sia pronto anche senza conferma
+    if [ $wait_count -ge 10 ]; then
+      dbg "Subscriber probabilmente pronto (timeout attesa flag)"
+      break
+    fi
+  done
+
+  # Ulteriore piccolo buffer di sicurezza
+  sleep 0.3
+  dbg "Subscriber pronto"
+}
+
+# Legge dalla FIFO con timeout
 wait_ack_from_fifo() {
   local typ="$1"; local since="$2"; local mid="$3"
   local deadline=$(( $(date +%s) + ACK_TIMEOUT ))
-  local line candidate
+  local line
 
-  while true; do
-    # interrompi se timeout
-    if [ "$(date +%s)" -ge "$deadline" ]; then
-      dbg "Timeout in attesa di ACK"
-      echo ""
-      return 0
-    fi
-    # read con timeout breve per poter controllare il deadline
-    if IFS= read -r -t 0.5 line < "$SUB_FIFO"; then
-      dbg "RX: $line"
-      candidate=$(printf '%s' "$line" | jq -rc \
-        --arg typ "$typ" \
-        --arg mid "$mid" \
-        --argjson since "$since" \
-        --argjson win "$ACK_WINDOW_MS" '
-          select((.cmdType? // "") == $typ)
-          | select(
-              (.msgId? // "") == $mid
-              or (
-                (try (.ts) catch 0) >= $since
-                and (try (.ts) catch 0) <= ($since + $win)
-              )
-            )
-        ' 2>/dev/null || true)
-      if [ -n "$candidate" ]; then
-        echo "$candidate"
+  dbg "Attendo ACK per cmdType='$typ' msgId='$mid' since=$since window=${ACK_WINDOW_MS}ms"
+
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if read -r -t 1 line < "$SUB_FIFO" 2>/dev/null; then
+      dbg "RX RAW: $line"
+
+      # Verifica JSON valido
+      if ! echo "$line" | jq empty 2>/dev/null; then
+        dbg "  Non è JSON valido, ignoro"
+        continue
+      fi
+
+      # Estrai campi
+      local msg_type=$(echo "$line" | jq -r '.cmdType // ""' 2>/dev/null)
+      local msg_id=$(echo "$line" | jq -r '.msgId // ""' 2>/dev/null)
+      local msg_ts=$(echo "$line" | jq -r '.ts // 0' 2>/dev/null)
+
+      dbg "  cmdType=$msg_type msgId=$msg_id ts=$msg_ts"
+
+      # Match cmdType
+      if [ "$msg_type" != "$typ" ]; then
+        dbg "  cmdType non matcha (atteso '$typ'), ignoro"
+        continue
+      fi
+
+      # Match msgId O timestamp window
+      if [ -n "$msg_id" ] && [ "$msg_id" = "$mid" ]; then
+        dbg "  ✓ MATCH per msgId!"
+        echo "$line"
         return 0
+      fi
+
+      # Fallback su timestamp window se msgId è null
+      if [[ "$msg_ts" =~ ^[0-9]+$ ]] && [ "$msg_ts" -gt 0 ]; then
+        local window_end=$((since + ACK_WINDOW_MS))
+        dbg "  Check timestamp: $msg_ts in [$since, $window_end]?"
+        if [ "$msg_ts" -ge "$since" ] && [ "$msg_ts" -le "$window_end" ]; then
+          dbg "  ✓ MATCH per timestamp window!"
+          echo "$line"
+          return 0
+        else
+          dbg "  Timestamp fuori window"
+        fi
       fi
     fi
   done
+
+  dbg "Timeout in attesa di ACK"
+  echo ""
+  return 0
 }
 
 send_cmd() {
   local typ="$1"
   local ts msgid payload ack ats
 
+  # 1) Avvia subscriber PRIMA di generare timestamp e msgid
+  start_ack_sub
+
+  # 2) Genera timestamp e payload DOPO che il sub è pronto
   ts=$(date +%s%3N)
   msgid=$(gen_msgid)
   payload=$(printf '{"type":"%s","ts":%s,"msgId":"%s"}' "$typ" "$ts" "$msgid")
 
   echo "• POST ${CMD_PATH} payload=${payload}"
 
-  # 1) Subscribe prima del POST per non perdere l'ACK
-  start_ack_sub
-
-  # 2) POST CoAP (ignora l'output, non tutti gli endpoint rispondono con payload)
+  # 3) POST CoAP
   if ! "$COAP" -m post -t application/json -e "$payload" "${BASE}${CMD_PATH}" >/dev/null 2>&1; then
     dbg "coap-client ha restituito errore (potrebbe essere solo EMPTY ACK CoAP)."
   fi
 
   echo "• ACK:"
-  # 3) Attendi ACK sulla FIFO
-  ack=$(wait_ack_from_fifo "$typ" "$ts" "$msgid")
 
-  # 4) Chiudi subscriber e FIFO
-  stop_ack_sub
+  # 4) Attendi ACK
+  ack=$(wait_ack_from_fifo "$typ" "$ts" "$msgid")
 
   if [ -n "$ack" ]; then
     printf '%s\n' "$ack" | jq -r '"cmdType=\(.cmdType) status=\(.status) message=\(.message) ts=\(.ts) msgId=\(.msgId // "-")"'
     ats=$(printf '%s' "$ack" | jq -r 'try .ts catch 0' 2>/dev/null || echo 0)
-    if [[ "$ats" =~ ^[0-9]+$ ]] && [[ "$ats" -gt 0 ]]; then
+    if [[ "$ats" =~ ^[0-9]+$ ]] && [[ "$ats" -gt 0 ]] && [[ "$ts" =~ ^[0-9]+$ ]]; then
       echo "• Latenza ≈ $((ats - ts)) ms"
     fi
   else
-    echo "Nessun ACK per cmdType='${typ}' entro ${ACK_TIMEOUT}s (window ${ACK_WINDOW_MS}ms)"
+    echo "⚠ Nessun ACK per cmdType='${typ}' entro ${ACK_TIMEOUT}s (window ${ACK_WINDOW_MS}ms)"
   fi
 }
 

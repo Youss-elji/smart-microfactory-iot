@@ -130,6 +130,7 @@ public class ConveyorBelt extends SimulatedDevice {
                 currentSpeed
         );
 
+
         mqttClientManager.publish(statusTopic, status); // QoS1, non mantenuto
     }
 

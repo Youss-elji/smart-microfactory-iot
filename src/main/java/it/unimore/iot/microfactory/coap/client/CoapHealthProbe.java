@@ -8,7 +8,7 @@ import org.eclipse.californium.core.coap.MediaTypeRegistry;
 public class CoapHealthProbe {
   // Esegue una richiesta GET con timeout fisso e codici di uscita in caso di errore
   public static void main(String[] args) {
-    String uri = "coap://127.0.0.1:5683/.well-known/core";
+    String uri = "coap://localhost:5683/.well-known/core";
     if (args.length > 0) uri = args[0];
     System.out.println("[PROBE] GET " + uri);
     CoapClient c = new CoapClient(uri);

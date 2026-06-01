@@ -27,12 +27,13 @@ import java.util.Set;
  * L'architettura è basata su risorse CoAP nidificate dinamicamente,
  * che permettono di navigare la gerarchia della fabbrica: /factory/{cellId}/{deviceType}/{deviceId}/...
  */
+
 public class CoapApiServer {
 
     private static final Logger log = LoggerFactory.getLogger(CoapApiServer.class);
     private static final Set<String> SUPPORTED_DEVICE_COMMANDS = Set.of("RESET", "START", "STOP");
     private static final Set<String> SUPPORTED_GLOBAL_COMMANDS = Set.of("RESET", "START", "STOP", "EMERGENCY");
-    private final CoapServer server;
+    public final CoapServer server;
 
     /**
      * Inizializza il server sulla porta CoAP di default (5683).
@@ -81,6 +82,8 @@ public class CoapApiServer {
             throw new RuntimeException("Impossibile avviare il server CoAP", e);
         }
     }
+
+
 
     /**
      * Ferma il server CoAP e rilascia le risorse.
